@@ -14,14 +14,14 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8875132519:AAEJNNuZqaLD2qV_5G6mFLTEmkavL20eXlg")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "8979291976").split(",")]
 
-# ---------- CHANNELS (सिर्फ 3 – Group optional) ----------
+# ---------- CHANNELS (सिर्फ 3 – private group हटा दिया) ----------
 CHANNELS = [
     {"name": "Channel 1", "username": "@wftis_ak4sh", "link": "https://t.me/wftis_ak4sh"},
     {"name": "Channel 2", "username": "@Err9r403", "link": "https://t.me/Err9r403"},
     {"name": "Channel 3", "username": "@AkashOSINT", "link": "https://t.me/AkashOSINT"},
 ]
 
-# ---------- GROUP (Optional – verify में शामिल नहीं) ----------
+# ---------- GROUP (optional – सिर्फ button में दिखेगा, verify नहीं होगा) ----------
 GROUP_LINK = "https://t.me/+oRfAbV_UhstmZDdh"
 
 # ---------- APIs ----------
@@ -164,13 +164,14 @@ def auto_cleaner():
         try:
             clean_old_history()
             clean_old_queries()
-        except: pass
+        except:
+            pass
         time.sleep(600)
 
 
-# ---------- VERIFICATION (सिर्फ 3 channels) ----------
+# ---------- VERIFICATION (सिर्फ 3 public channels) ----------
 async def check_verification(user_id, context):
-    """सिर्फ 3 channels check करता है – group optional."""
+    """सिर्फ 3 public channels check करता है। Private group skip."""
     for ch in CHANNELS:
         try:
             member = await context.bot.get_chat_member(
@@ -179,7 +180,7 @@ async def check_verification(user_id, context):
             if member.status not in ["member", "administrator", "creator"]:
                 return False, ch["name"]
         except Exception as e:
-            print(f"Verify error {ch['username']}: {e}")
+            print(f"Verify error for {ch['username']}: {e}")
             return False, ch["name"]
     return True, None
 
@@ -643,7 +644,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         text = update.message.text.strip() if update.message.text else ""
 
-        # Verification check
         ok, _ = await check_verification(user_id, context)
         if not ok:
             await update.message.reply_text(
@@ -653,7 +653,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Admin actions
         if user_id in ADMIN_IDS and context.user_data.get("admin_action"):
             a = context.user_data["admin_action"]
 
@@ -795,17 +794,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("🔢 Send Telegram ID:")
             context.user_data["lookup_type"] = "tg_to_num"
         elif text == "👤 𝘔𝘺 𝘈𝘤𝘤𝘰𝘶𝘯𝘵":
+            # ---------- NORMAL TEXT (not JSON) ----------
             ud = get_user_data(user_id)
-            acc = {
-                "𝙪𝙨𝙚𝙧 𝙞𝙙": str(user_id),
-                "𝙣𝙖𝙢𝙚": ud.get("name", "Unknown"),
-                "𝙘𝙤𝙞𝙣𝙨": ud.get("coins", 0),
-                "𝙧𝙚𝙛𝙚𝙧𝙧𝙖𝙡𝙨": ud.get("referrals", 0)
-            }
-            await update.message.reply_text(
-                "**👤 My Account**\n```json\n" + json.dumps(acc, indent=2, ensure_ascii=False) + "\n```",
-                parse_mode="Markdown"
+            msg = (
+                f"👤 **My Account**\n\n"
+                f"🆔 User ID: `{user_id}`\n"
+                f"👤 Name: {ud.get('name', 'Unknown')}\n"
+                f"🪙 Coins: {ud.get('coins', 0)}\n"
+                f"👥 Referrals: {ud.get('referrals', 0)}"
             )
+            await update.message.reply_text(msg, parse_mode="Markdown")
         elif text == "🔗 𝘙𝘦𝘧𝘦𝘳𝘳𝘢𝘭":
             ref_link = f"https://t.me/{context.bot.username}?start={user_id}"
             await update.message.reply_text(f"🔗 **Referral Link**\n\nEarn {REFERRAL_BONUS} coin per referral!\n\n{ref_link}")
