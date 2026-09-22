@@ -37,7 +37,7 @@ COINS_ON_START = 5
 COST_PER_LOOKUP = 1
 REFERRAL_BONUS = 1
 HISTORY_LIMIT = 10
-HISTORY_TTL_HOURS = 24   # Auto-delete after 24 hours
+HISTORY_TTL_HOURS = 24
 
 DATA_FILE = "user_data.json"
 BLOCK_FILE = "blocked_users.json"
@@ -48,9 +48,8 @@ MAX_LOG_ENTRIES = 200
 ADMIN_USERNAME = "@AK4SX"
 
 
-# ---------- AUTO-DELETE HISTORY (older than 24h) ----------
+# ---------- AUTO-CLEAN ----------
 def clean_old_history():
-    """Remove history entries older than 24 hours."""
     data = load_data()
     cutoff = datetime.now() - timedelta(hours=HISTORY_TTL_HOURS)
     changed = False
@@ -58,8 +57,6 @@ def clean_old_history():
         history = info.get("history", [])
         new_history = []
         for entry in history:
-            # entry format: "TYPE: value (ISO-timestamp)" OR just "TYPE: value"
-            # Check if entry has a timestamp in brackets
             m = re.match(r"^(.*)\s*\((\d{4}-\d{2}-\d{2}T.*)\)$", entry)
             if m:
                 try:
@@ -71,8 +68,6 @@ def clean_old_history():
                 except:
                     new_history.append(entry)
             else:
-                # Old format – remove because it has no timestamp and may be >24h
-                # Keep as is if you want; here we remove to be strict:
                 new_history.append(entry)
         info["history"] = new_history[-HISTORY_LIMIT:]
         if len(new_history) != len(history):
@@ -82,7 +77,6 @@ def clean_old_history():
 
 
 def clean_old_queries():
-    """Remove query_log entries older than 24 hours."""
     log = load_query_log()
     cutoff = datetime.now() - timedelta(hours=HISTORY_TTL_HOURS)
     new_log = []
@@ -98,17 +92,16 @@ def clean_old_queries():
 
 
 def auto_cleaner():
-    """Background thread to clean every 10 minutes."""
     while True:
         try:
             clean_old_history()
             clean_old_queries()
         except Exception as e:
             print("Auto-cleaner error:", e)
-        time.sleep(600)  # 10 minutes
+        time.sleep(600)
 
 
-# ---------- DATA HANDLING ----------
+# ---------- DATA ----------
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
@@ -125,9 +118,9 @@ def load_blocked():
             return set(json.load(f))
     return set()
 
-def save_blocked(blocked_set):
+def save_blocked(b):
     with open(BLOCK_FILE, "w") as f:
-        json.dump(list(blocked_set), f)
+        json.dump(list(b), f)
 
 def load_query_log():
     if os.path.exists(QUERY_LOG_FILE):
@@ -145,18 +138,18 @@ def load_access():
             return json.load(f)
     return {"collaborators": [], "moderators": []}
 
-def save_access(access):
+def save_access(a):
     with open(ACCESS_FILE, "w") as f:
-        json.dump(access, f, indent=2)
+        json.dump(a, f, indent=2)
 
-def is_collaborator(user_id):
-    return user_id in load_access().get("collaborators", [])
+def is_collaborator(uid):
+    return uid in load_access().get("collaborators", [])
 
-def is_moderator(user_id):
-    return user_id in load_access().get("moderators", [])
+def is_moderator(uid):
+    return uid in load_access().get("moderators", [])
 
-def has_special_access(user_id):
-    return is_collaborator(user_id) or is_moderator(user_id)
+def has_special_access(uid):
+    return is_collaborator(uid) or is_moderator(uid)
 
 def get_user_data(user_id, name=None):
     data = load_data()
@@ -188,7 +181,8 @@ async def is_member(user_id, context):
             member = await context.bot.get_chat_member(chat_id=ch["username"], user_id=user_id)
             if member.status not in ["member", "administrator", "creator"]:
                 return False
-        except:
+        except Exception as e:
+            print(f"Membership check error for {ch['username']}: {e}")
             return False
     return True
 
@@ -224,16 +218,13 @@ def get_admin_keyboard():
     return ReplyKeyboardMarkup(buttons, resize_keyboard=True, one_time_keyboard=False)
 
 def get_bot_management_menu():
+    """Simplified menu – only 4 main buttons"""
     keyboard = [
         [InlineKeyboardButton("🎁 Give Coin", callback_data="admin_givecoin")],
-        [InlineKeyboardButton("🎁 Give All Users Coin", callback_data="admin_giveallcoins")],
-        [InlineKeyboardButton("🤖 Bot Messenger", callback_data="admin_bot_messenger")],
+        [InlineKeyboardButton("🎁 Give All Coin", callback_data="admin_giveallcoins")],
         [InlineKeyboardButton("📊 Stats", callback_data="admin_stats")],
         [InlineKeyboardButton("📊 QueryScope", callback_data="admin_query_scope")],
-        [InlineKeyboardButton("🚫 Block User", callback_data="admin_block")],
-        [InlineKeyboardButton("✅ Unblock User", callback_data="admin_unblock")],
-        [InlineKeyboardButton("👥 All Users", callback_data="admin_all_users")],
-        [InlineKeyboardButton("🚫 Blocked Users", callback_data="admin_blocked_users")],
+        [InlineKeyboardButton("🤖 Bot Messenger", callback_data="admin_bot_messenger")],
         [InlineKeyboardButton("❌ Close", callback_data="admin_close")]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -243,20 +234,20 @@ def get_moderator_menu():
         [InlineKeyboardButton("👥 𝑨𝒅𝒅 𝑪𝒐𝒍𝒍𝒂𝒃𝒐𝒓𝒂𝒕𝒐𝒓𝒔", callback_data="mod_add_collab")],
         [InlineKeyboardButton("🛡️ 𝑨𝒅𝒅 𝑴𝒐𝒅𝒆𝒓𝒂𝒕𝒐𝒓𝒔", callback_data="mod_add_mod")],
         [InlineKeyboardButton("🔓 𝑹𝒆𝒎𝒐𝒗𝒆 𝑨𝒄𝒄𝒆𝒔𝒔", callback_data="mod_remove")],
-        [InlineKeyboardButton("🔙 Back", callback_data="admin_back")]
+        [InlineKeyboardButton("📋 𝑳𝒊𝒔𝒕 𝑨𝒄𝒄𝒆𝒔𝒔", callback_data="mod_list")],
+        [InlineKeyboardButton("❌ Close", callback_data="admin_close")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_back_keyboard():
-    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="admin_back")]]
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="admin_back")]])
 
 def get_bot_messenger_keyboard():
     keyboard = [
         [InlineKeyboardButton("📝 Text Message", callback_data="msg_text")],
         [InlineKeyboardButton("🖼️ Photo", callback_data="msg_photo")],
         [InlineKeyboardButton("🎥 Video", callback_data="msg_video")],
-        [InlineKeyboardButton("🎵 Audio/Song", callback_data="msg_audio")],
+        [InlineKeyboardButton("🎵 Audio", callback_data="msg_audio")],
         [InlineKeyboardButton("📄 Document", callback_data="msg_document")],
         [InlineKeyboardButton("🎞️ GIF", callback_data="msg_gif")],
         [InlineKeyboardButton("🔙 Back", callback_data="admin_back")]
@@ -335,8 +326,7 @@ def format_pincode_output(data):
     if not data or data.get("status") != "success":
         return "❌ No data found for this PIN code."
     clean_data = {
-        "status": data.get("status"),
-        "pincode": data.get("pincode", "N/A"),
+        "status": data.get("status"), "pincode": data.get("pincode", "N/A"),
         "total_records_found": data.get("total_records_found") or data.get("total_records") or 1,
         "delivery_status": data.get("delivery_status") or "N/A",
         "district": data.get("district") or "N/A",
@@ -392,7 +382,6 @@ def log_query(user_id, name, query_type, query_input):
         "user_id": user_id, "name": name or "Unknown",
         "type": query_type, "query": query_input
     })
-    # Keep only last 200 entries
     if len(log) > MAX_LOG_ENTRIES:
         log = log[-MAX_LOG_ENTRIES:]
     save_query_log(log)
@@ -474,7 +463,6 @@ async def perform_lookup(update, context, lookup_type, input_text):
     else:
         result = "Unknown"
 
-    # Store history WITH timestamp
     timestamp = datetime.now().isoformat()
     entry = f"{lookup_type.upper()}: {input_text} ({timestamp})"
     if len(user_data["history"]) >= HISTORY_LIMIT:
@@ -484,67 +472,78 @@ async def perform_lookup(update, context, lookup_type, input_text):
 
     log_query(user_id, name, lookup_type, input_text)
 
-    await update.message.reply_text(result, parse_mode="Markdown", reply_markup=get_keyboard(user_id))
+    try:
+        await update.message.reply_text(result, parse_mode="Markdown", reply_markup=get_keyboard(user_id))
+    except Exception as e:
+        print("Send error:", e)
+        await update.message.reply_text("⚠️ Response delay. Please try again.")
 
 
 # ---------- START ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id
-    first_name = user.first_name or "User"
+    try:
+        user = update.effective_user
+        user_id = user.id
+        first_name = user.first_name or "User"
 
-    get_user_data(user_id, first_name)
+        get_user_data(user_id, first_name)
 
-    ref = context.args[0] if context.args else None
-    if ref and ref.isdigit() and int(ref) != user_id:
-        data = load_data()
-        uid = str(user_id)
-        if uid not in data:
-            data[uid] = {
-                "coins": COINS_ON_START, "referrals": 0,
-                "referred_by": int(ref), "history": [],
-                "name": first_name, "phone": None
-            }
-            save_data(data)
-            if str(ref) in data:
-                data[str(ref)]["coins"] += REFERRAL_BONUS
-                data[str(ref)]["referrals"] += 1
+        ref = context.args[0] if context.args else None
+        if ref and ref.isdigit() and int(ref) != user_id:
+            data = load_data()
+            uid = str(user_id)
+            if uid not in data:
+                data[uid] = {
+                    "coins": COINS_ON_START, "referrals": 0,
+                    "referred_by": int(ref), "history": [],
+                    "name": first_name, "phone": None
+                }
                 save_data(data)
+                if str(ref) in data:
+                    data[str(ref)]["coins"] += REFERRAL_BONUS
+                    data[str(ref)]["referrals"] += 1
+                    save_data(data)
 
-    if user_id in load_blocked():
-        await update.message.reply_text("⛔ You are blocked from using this bot.")
-        return
+        if user_id in load_blocked():
+            await update.message.reply_text("⛔ You are blocked from using this bot.")
+            return
 
-    if await is_verified(user_id, context):
-        welcome = (
-            f"ʜᴇʏ 👋 {first_name}\n\n"
-            f"ʏᴏᴜʀ ɪᴅ ~ {user_id} ❤️\n\n"
-            f"ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴀᴋᴀsʜ ᴏsɪɴᴛ ʙᴏᴛ 🧑‍💻\n"
-            f"ᴜsᴇ ᴛʜᴇ ʙᴜᴛᴛᴏɴs ʙᴇʟᴏᴡ."
+        if await is_verified(user_id, context):
+            welcome = (
+                f"ʜᴇʏ 👋 {first_name}\n\n"
+                f"ʏᴏᴜʀ ɪᴅ ~ {user_id} ❤️\n\n"
+                f"ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴀᴋᴀsʜ ᴏsɪɴᴛ ʙᴏᴛ 🧑‍💻\n"
+                f"ᴜsᴇ ᴛʜᴇ ʙᴜᴛᴛᴏɴs ʙᴇʟᴏᴡ."
+            )
+            await update.message.reply_text(welcome, reply_markup=get_keyboard(user_id))
+            return
+
+        keyboard = []
+        keyboard.append([InlineKeyboardButton("📢 𝘫𝘰𝘪𝘯 𝘤𝘩𝘢𝘯𝘯𝘦𝘭 𝟣", url=CHANNELS[0]["link"])])
+        keyboard.append([InlineKeyboardButton("📢 𝘫𝘰𝘪𝘯 𝘤𝘩𝘢𝘯𝘯𝘦𝘭 𝟤", url=CHANNELS[1]["link"])])
+        keyboard.append([InlineKeyboardButton("📢 𝘫𝘰𝘪𝘯 𝘤𝘩𝘢𝘯𝘯𝘦𝘭 𝟥", url=CHANNELS[2]["link"])])
+        keyboard.append([InlineKeyboardButton("👥 𝘫𝘰𝘪𝘯 𝘨𝘳𝘰𝘶𝘱", url=CHANNELS[3]["link"])])
+        keyboard.append([InlineKeyboardButton("✅ Verify", callback_data="verify")])
+        await update.message.reply_text(
+            "Please join all channels & group to use this bot:\n\nAfter joining, press the Verify button.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        await update.message.reply_text(welcome, reply_markup=get_keyboard(user_id))
-        return
-
-    keyboard = []
-    keyboard.append([InlineKeyboardButton("📢 𝘫𝘰𝘪𝘯 𝘤𝘩𝘢𝘯𝘯𝘦𝘭 𝟣", url=CHANNELS[0]["link"])])
-    keyboard.append([InlineKeyboardButton("📢 𝘫𝘰𝘪𝘯 𝘤𝘩𝘢𝘯𝘯𝘦𝘭 𝟤", url=CHANNELS[1]["link"])])
-    keyboard.append([InlineKeyboardButton("📢 𝘫𝘰𝘪𝘯 𝘤𝘩𝘢𝘯𝘯𝘦𝘭 𝟥", url=CHANNELS[2]["link"])])
-    keyboard.append([InlineKeyboardButton("👥 𝘫𝘰𝘪𝘯 𝘨𝘳𝘰𝘶𝘱", url=CHANNELS[3]["link"])])
-    keyboard.append([InlineKeyboardButton("✅ Verify", callback_data="verify")])
-    await update.message.reply_text(
-        "Please join all channels & group to use this bot:\n\nAfter joining, press the Verify button.",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    except Exception as e:
+        print("Start error:", e)
+        try:
+            await update.message.reply_text("⚠️ Connection issue. Please try /start again.")
+        except:
+            pass
 
 
 # ---------- RESTART & SETPHONE ----------
 async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id in ADMIN_IDS:
-        await update.message.reply_text("🔄 Bot is restarting...")
+        await update.message.reply_text("🔄 Restarting...")
         os.execv(sys.executable, ['python'] + sys.argv)
     else:
-        await update.message.reply_text("❌ You are not authorized.")
+        await update.message.reply_text("❌ Not authorized.")
 
 async def setphone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -568,22 +567,40 @@ async def setphone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- VERIFY CALLBACK ----------
 async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except:
+        pass
     user_id = query.from_user.id
+
     if user_id in load_blocked():
         await query.edit_message_text("⛔ You are blocked.")
         return
-    if await is_member(user_id, context):
-        await query.edit_message_text("✅ Verification successful!\n\nNow use /start again to access the bot.", reply_markup=None)
-    else:
-        await query.edit_message_text("❌ You haven't joined all channels & group yet.\nPlease join and press Verify again.", reply_markup=query.message.reply_markup)
+
+    try:
+        if await is_member(user_id, context):
+            await query.edit_message_text(
+                "✅ Verification successful!\n\nNow use /start again to access the bot.",
+                reply_markup=None
+            )
+        else:
+            await query.edit_message_text(
+                "❌ You haven't joined all channels & group yet.\nPlease join and press Verify again.",
+                reply_markup=query.message.reply_markup
+            )
+    except Exception as e:
+        print("Verify error:", e)
 
 
 # ---------- BOT MANAGEMENT CALLBACKS ----------
 async def bot_management_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except:
+        pass
     user_id = query.from_user.id
+
     if user_id not in ADMIN_IDS:
         await query.edit_message_text("⛔ You are not authorized.")
         return
@@ -605,11 +622,9 @@ async def bot_management_callback(update: Update, context: ContextTypes.DEFAULT_
         return
     elif data == "admin_giveallcoins":
         context.user_data["admin_action"] = "giveallcoins"
-        await query.edit_message_text("🎁 **Give All Users Coin**\n\nSend amount (e.g., `10`)", parse_mode="Markdown", reply_markup=get_back_keyboard())
+        await query.edit_message_text("🎁 **Give All Coin**\n\nSend amount (e.g., `10`)", parse_mode="Markdown", reply_markup=get_back_keyboard())
         return
     elif data == "admin_query_scope":
-        log = load_query_log()
-        # Auto-clean first
         clean_old_queries()
         log = load_query_log()
         if not log:
@@ -620,7 +635,6 @@ async def bot_management_callback(update: Update, context: ContextTypes.DEFAULT_
             for entry in recent:
                 lines.append(f"👤 {entry.get('name','?')} (ID: `{entry.get('user_id','?')}`)")
                 lines.append(f"🔍 {entry.get('type','').upper()}: `{entry.get('query','')}`")
-                lines.append(f"🕒 {entry.get('timestamp','')[:19]}")
                 lines.append("")
             msg = "📊 **QueryScope (Last 24h)**\n\n" + "\n".join(lines)
         await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_back_keyboard())
@@ -639,41 +653,19 @@ async def bot_management_callback(update: Update, context: ContextTypes.DEFAULT_
                f"🛡️ Moderators: {len(access.get('moderators', []))}")
         await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_back_keyboard())
         return
-    elif data == "admin_block":
-        context.user_data["admin_action"] = "block"
-        await query.edit_message_text("🚫 **Block User**\n\nSend User ID.", reply_markup=get_back_keyboard())
-        return
-    elif data == "admin_unblock":
-        context.user_data["admin_action"] = "unblock"
-        await query.edit_message_text("✅ **Unblock User**\n\nSend User ID.", reply_markup=get_back_keyboard())
-        return
-    elif data == "admin_blocked_users":
-        blocked_set = load_blocked()
-        msg = "🚫 **Blocked Users**\n\n" + "\n".join(str(uid) for uid in blocked_set) if blocked_set else "✅ No blocked users."
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_back_keyboard())
-        return
-    elif data == "admin_all_users":
-        all_data = load_data()
-        if not all_data:
-            msg = "No users yet."
-        else:
-            lines = []
-            for uid, info in all_data.items():
-                name = info.get("name", "Unknown")
-                phone = info.get("phone") or "N/A"
-                lines.append(f"`{uid}`  {name}\n   {phone}\n")
-            msg = "👥 **All Users**\n\n" + "\n".join(lines)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_back_keyboard())
-        return
 
 
 # ---------- MODERATOR ACCESS CALLBACKS ----------
 async def moderator_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except:
+        pass
     user_id = query.from_user.id
+
     if user_id not in ADMIN_IDS:
-        await query.edit_message_text("⛔ You are not authorized.")
+        await query.edit_message_text("⛔ Not authorized.")
         return
 
     data = query.data
@@ -690,6 +682,17 @@ async def moderator_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data["admin_action"] = "remove_access"
         await query.edit_message_text("🔓 **Remove Access**\n\nSend User ID to remove special access.", reply_markup=get_back_keyboard())
         return
+    elif data == "mod_list":
+        access = load_access()
+        collabs = access.get("collaborators", [])
+        mods = access.get("moderators", [])
+        msg = "📋 **Special Access List**\n\n"
+        msg += "👥 **Collaborators:**\n"
+        msg += "\n".join([f"`{c}`" for c in collabs]) if collabs else "None"
+        msg += "\n\n🛡️ **Moderators:**\n"
+        msg += "\n".join([f"`{m}`" for m in mods]) if mods else "None"
+        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_back_keyboard())
+        return
     elif data == "admin_back":
         await query.edit_message_text("🔙 Back to main menu.", reply_markup=None)
         return
@@ -698,8 +701,12 @@ async def moderator_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ---------- BOT MESSENGER CALLBACKS ----------
 async def messenger_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except:
+        pass
     user_id = query.from_user.id
+
     if user_id not in ADMIN_IDS:
         await query.edit_message_text("⛔ Not authorized.")
         return
@@ -746,7 +753,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ---- ADMIN ACTIONS ----
+    # ADMIN ACTIONS
     if user_id in ADMIN_IDS and context.user_data.get("admin_action"):
         action = context.user_data["admin_action"]
 
@@ -794,24 +801,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data.pop("admin_action")
             return
 
-        elif action == "block":
-            if text.isdigit():
-                blocked = load_blocked(); blocked.add(int(text)); save_blocked(blocked)
-                await update.message.reply_text(f"🚫 User {text} blocked.")
-            else:
-                await update.message.reply_text("❌ Invalid ID.")
-            context.user_data.pop("admin_action")
-            return
-
-        elif action == "unblock":
-            if text.isdigit():
-                blocked = load_blocked(); blocked.discard(int(text)); save_blocked(blocked)
-                await update.message.reply_text(f"✅ User {text} unblocked.")
-            else:
-                await update.message.reply_text("❌ Invalid ID.")
-            context.user_data.pop("admin_action")
-            return
-
         elif action == "add_collab":
             if text.isdigit():
                 target = int(text)
@@ -821,9 +810,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if target in access["moderators"]:
                         access["moderators"].remove(target)
                     save_access(access)
-                    await update.message.reply_text(f"✅ User `{target}` added as **Collaborator**.", parse_mode="Markdown")
+                    await update.message.reply_text(f"✅ `{target}` added as **Collaborator**.", parse_mode="Markdown")
                 else:
-                    await update.message.reply_text(f"ℹ️ Already a Collaborator.", parse_mode="Markdown")
+                    await update.message.reply_text("ℹ️ Already a Collaborator.")
             else:
                 await update.message.reply_text("❌ Invalid ID.")
             context.user_data.pop("admin_action")
@@ -838,9 +827,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if target in access["collaborators"]:
                         access["collaborators"].remove(target)
                     save_access(access)
-                    await update.message.reply_text(f"✅ User `{target}` added as **Moderator**.", parse_mode="Markdown")
+                    await update.message.reply_text(f"✅ `{target}` added as **Moderator**.", parse_mode="Markdown")
                 else:
-                    await update.message.reply_text(f"ℹ️ Already a Moderator.", parse_mode="Markdown")
+                    await update.message.reply_text("ℹ️ Already a Moderator.")
             else:
                 await update.message.reply_text("❌ Invalid ID.")
             context.user_data.pop("admin_action")
@@ -859,13 +848,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if removed:
                     await update.message.reply_text(f"🔓 Access removed from `{target}`.", parse_mode="Markdown")
                 else:
-                    await update.message.reply_text(f"ℹ️ No special access.", parse_mode="Markdown")
+                    await update.message.reply_text("ℹ️ No special access.")
             else:
                 await update.message.reply_text("❌ Invalid ID.")
             context.user_data.pop("admin_action")
             return
 
-    # ---- HELP MENU ----
+    # HELP MENU
     if text == "💬 𝘏𝘦𝘭𝘱":
         help_msg = (
             "𝑵𝒆𝒆𝒅 𝒂𝒔𝒔𝒊𝒔𝒕𝒂𝒏𝒄𝒆?\n\n"
@@ -875,7 +864,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(help_msg)
         return
 
-    # ---- LOOKUP COMMANDS ----
+    # LOOKUP COMMANDS
     if text == "📱 𝘕𝘶𝘮𝘣𝘦𝘳 𝘓𝘰𝘰𝘬𝘶𝘱":
         await update.message.reply_text("📞 Send 10-digit number (e.g., 7250385668):")
         context.user_data["lookup_type"] = "number"
@@ -904,7 +893,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🔢 Send Telegram User ID:")
         context.user_data["lookup_type"] = "tg_to_num"
     elif text == "👤 𝘔𝘺 𝘈𝘤𝘤𝘰𝘶𝘯𝘵":
-        # ---------- NEW MY ACCOUNT FORMAT ----------
         user_data = get_user_data(user_id)
         account_data = {
             "𝙪𝙨𝙚𝙧 𝙞𝙙": str(user_id),
@@ -1024,21 +1012,28 @@ def run_web():
 
 # ---------- MAIN ----------
 def main():
-    # Start auto-cleaner thread (24h TTL)
     threading.Thread(target=auto_cleaner, daemon=True).start()
-    # Start Flask server
     threading.Thread(target=run_web, daemon=True).start()
 
-    application = Application.builder().token(BOT_TOKEN).build()
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .read_timeout(30)
+        .write_timeout(30)
+        .connect_timeout(30)
+        .pool_timeout(30)
+        .build()
+    )
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("restart", restart))
     application.add_handler(CommandHandler("setphone", setphone))
 
+    # IMPORTANT: Specific patterns first
     application.add_handler(CallbackQueryHandler(verify_callback, pattern="^verify$"))
-    application.add_handler(CallbackQueryHandler(bot_management_callback, pattern="^admin_"))
     application.add_handler(CallbackQueryHandler(moderator_callback, pattern="^mod_"))
     application.add_handler(CallbackQueryHandler(messenger_callback, pattern="^msg_"))
+    application.add_handler(CallbackQueryHandler(bot_management_callback, pattern="^admin_"))
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
@@ -1050,7 +1045,7 @@ def main():
         application.add_handler(MessageHandler(filters.Document.ALL & filters.User(admin_id), handle_messenger_document))
         application.add_handler(MessageHandler(filters.ANIMATION & filters.User(admin_id), handle_messenger_gif))
 
-    application.run_polling()
+    application.run_polling(poll_interval=1.0, timeout=30)
 
 if __name__ == "__main__":
     main()
