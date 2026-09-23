@@ -7,21 +7,26 @@ import requests
 import threading
 from datetime import datetime, timedelta
 from flask import Flask
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 # ---------- CONFIG ----------
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8875132519:AAEJNNuZqaLD2qV_5G6mFLTEmkavL20eXlg")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable not set!")
+
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "8979291976").split(",")]
 
-# ---------- CHANNELS (सिर्फ 3 – private group हटा दिया) ----------
+# ---------- MINI APP URL ----------
+MINI_APP_URL = "https://akash-miniapp.onrender.com/app.html"
+
+# ---------- CHANNELS (3 public) ----------
 CHANNELS = [
     {"name": "Channel 1", "username": "@wftis_ak4sh", "link": "https://t.me/wftis_ak4sh"},
     {"name": "Channel 2", "username": "@Err9r403", "link": "https://t.me/Err9r403"},
     {"name": "Channel 3", "username": "@AkashOSINT", "link": "https://t.me/AkashOSINT"},
 ]
 
-# ---------- GROUP (optional – सिर्फ button में दिखेगा, verify नहीं होगा) ----------
 GROUP_LINK = "https://t.me/+oRfAbV_UhstmZDdh"
 
 # ---------- APIs ----------
@@ -169,18 +174,21 @@ def auto_cleaner():
         time.sleep(600)
 
 
-# ---------- VERIFICATION (सिर्फ 3 public channels) ----------
+# ---------- VERIFICATION ----------
 async def check_verification(user_id, context):
-    """सिर्फ 3 public channels check करता है। Private group skip."""
     for ch in CHANNELS:
         try:
-            member = await context.bot.get_chat_member(
-                chat_id=ch["username"], user_id=user_id
-            )
-            if member.status not in ["member", "administrator", "creator"]:
+            member = await context.bot.get_chat_member(chat_id=ch["username"], user_id=user_id)
+            status = getattr(member, "status", None)
+            if status not in ["member", "administrator", "creator"]:
                 return False, ch["name"]
         except Exception as e:
+            err = str(e).lower()
             print(f"Verify error for {ch['username']}: {e}")
+            if "chat not found" in err or "not enough rights" in err:
+                return False, f"{ch['name']} (Bot not admin)"
+            if "user not found" in err or "participant" in err:
+                return False, ch["name"]
             return False, ch["name"]
     return True, None
 
@@ -194,13 +202,14 @@ async def is_verified(user_id, context):
 
 
 def get_verify_keyboard():
-    """3 channels + group link + verify button."""
-    kb = []
-    kb.append([InlineKeyboardButton("📢 𝘫𝘰𝘪𝘯 𝘤𝘩𝘢𝘯𝘯𝘦𝘭 𝟣", url=CHANNELS[0]["link"])])
-    kb.append([InlineKeyboardButton("📢 𝘫𝘰𝘪𝘯 𝘤𝘩𝘢𝘯𝘯𝘦𝘭 𝟤", url=CHANNELS[1]["link"])])
-    kb.append([InlineKeyboardButton("📢 𝘫𝘰𝘪𝘯 𝘤𝘩𝘢𝘯𝘯𝘦𝘭 𝟥", url=CHANNELS[2]["link"])])
-    kb.append([InlineKeyboardButton("👥 𝘫𝘰𝘪𝘯 𝘨𝘳𝘰𝘶𝘱", url=GROUP_LINK)])
-    kb.append([InlineKeyboardButton("✅ Verify", callback_data="verify")])
+    kb = [
+        [InlineKeyboardButton("📢 𝘫𝘰𝘪𝘯 𝘤𝘩𝘢𝘯𝘯𝘦𝘭 𝟣", url=CHANNELS[0]["link"])],
+        [InlineKeyboardButton("📢 𝘫𝘰𝘪𝘯 𝘤𝘩𝘢𝘯𝘯𝘦𝘭 𝟤", url=CHANNELS[1]["link"])],
+        [InlineKeyboardButton("📢 𝘫𝘰𝘪𝘯 𝘤𝘩𝘢𝘯𝘯𝘦𝘭 𝟥", url=CHANNELS[2]["link"])],
+        [InlineKeyboardButton("👥 𝘫𝘰𝘪𝘯 𝘨𝘳𝘰𝘶𝘱", url=GROUP_LINK)],
+        [InlineKeyboardButton("✅ Verify", callback_data="verify")],
+        [InlineKeyboardButton("🎨 𝘖𝘱𝘦𝘯 𝘊𝘰𝘭𝘰𝘳𝘦𝘥 𝘔𝘦𝘯𝘶", web_app=WebAppInfo(url=MINI_APP_URL))]
+    ]
     return InlineKeyboardMarkup(kb)
 
 
@@ -457,7 +466,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         first_name = user.first_name or "User"
         get_user_data(user_id, first_name)
 
-        # Referral
         ref = context.args[0] if context.args else None
         if ref and ref.isdigit() and int(ref) != user_id:
             data = load_data()
@@ -488,7 +496,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(
                 "⚠️ Please join the 3 channels to use this bot.\n\n"
-                "After joining, press ✅ Verify.",
+                "After joining, press ✅ Verify.\n\n"
+                "🎨 Tap below to open colored menu.",
                 reply_markup=get_verify_keyboard()
             )
     except Exception as e:
@@ -522,6 +531,60 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     except Exception as e:
         print("Verify error:", e)
+
+
+# ---------- MINI APP DATA HANDLER ----------
+async def webapp_data_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle data from the Mini App."""
+    try:
+        data = update.message.web_app_data.data
+        user_id = update.effective_user.id
+
+        # Map Mini App button labels → lookup types
+        mapping = {
+            "Number Lookup": ("number", "📞 Send 10-digit mobile number (e.g., 7250385668):"),
+            "Aadhar Lookup": ("aadhar", "🆔 Send 12-digit Aadhar number:"),
+            "PAN Lookup": ("pan", "💳 Send PAN number (e.g., ABCDE1234F):"),
+            "IFSC Lookup": ("ifsc", "🏦 Send IFSC code (e.g., SBIN0001234):"),
+            "Group Lookup": (None, "👥 Group lookup coming soon!"),
+            "Channel Lookup": (None, "📢 Channel lookup coming soon!"),
+            "Forum Lookup": (None, "💬 Forum lookup coming soon!"),
+            "My Group": (None, "👥 Your groups list soon!"),
+            "My Channel": (None, "📢 Your channels list soon!"),
+            "My Forum": (None, "💬 Your forums list soon!"),
+            "My Account": (None, None),
+            "User Lookup": (None, "👤 User lookup coming soon!"),
+            "Premium": (None, "💎 Premium features coming soon!"),
+            "Bot Info": (None, f"🤖 Akash OSINT Bot\nDev: {ADMIN_USERNAME}"),
+        }
+
+        if data == "My Account":
+            ud = get_user_data(user_id)
+            msg = (
+                f"👤 **My Account**\n\n"
+                f"🆔 User ID: `{user_id}`\n"
+                f"👤 Name: {ud.get('name', 'Unknown')}\n"
+                f"🪙 Coins: {ud.get('coins', 0)}\n"
+                f"👥 Referrals: {ud.get('referrals', 0)}"
+            )
+            await update.message.reply_text(msg, parse_mode="Markdown")
+            return
+
+        if data in mapping:
+            lookup_type, prompt = mapping[data]
+            if lookup_type:
+                context.user_data["lookup_type"] = lookup_type
+                await update.message.reply_text(
+                    f"🎨 Selected: **{data}**\n\n{prompt}",
+                    parse_mode="Markdown"
+                )
+            else:
+                await update.message.reply_text(f"🎨 Selected: **{data}**\n\n{prompt}", parse_mode="Markdown")
+            return
+
+        await update.message.reply_text(f"🎨 Selected: **{data}**", parse_mode="Markdown")
+    except Exception as e:
+        print("WebApp data error:", e)
 
 
 # ---------- ADMIN CALLBACKS ----------
@@ -648,7 +711,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not ok:
             await update.message.reply_text(
                 "⚠️ You must join all 3 channels to use this bot.\n\n"
-                "After joining, press ✅ Verify.",
+                "After joining, press ✅ Verify.\n\n"
+                "🎨 Tap below to open colored menu.",
                 reply_markup=get_verify_keyboard()
             )
             return
@@ -756,7 +820,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data.pop("admin_action")
                 return
 
-        # Help
         if text == "💬 𝘏𝘦𝘭𝘱":
             await update.message.reply_text(
                 "𝑵𝒆𝒆𝒅 𝒂𝒔𝒔𝒊𝒔𝒕𝒂𝒏𝒄𝒆?\n\n"
@@ -765,7 +828,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Lookup buttons
         if text == "📱 𝘕𝘶𝘮𝘣𝘦𝘳 𝘓𝘰𝘰𝘬𝘶𝘱":
             await update.message.reply_text("📞 Send 10-digit number:")
             context.user_data["lookup_type"] = "number"
@@ -794,7 +856,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("🔢 Send Telegram ID:")
             context.user_data["lookup_type"] = "tg_to_num"
         elif text == "👤 𝘔𝘺 𝘈𝘤𝘤𝘰𝘶𝘯𝘵":
-            # ---------- NORMAL TEXT (not JSON) ----------
             ud = get_user_data(user_id)
             msg = (
                 f"👤 **My Account**\n\n"
@@ -922,6 +983,16 @@ def main():
         .build()
     )
 
+    # Delete webhook before polling
+    try:
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(application.bot.delete_webhook(drop_pending_updates=True))
+        print("Webhook deleted successfully")
+    except Exception as e:
+        print(f"Webhook delete error: {e}")
+
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("restart", restart))
     application.add_handler(CommandHandler("setphone", setphone))
@@ -930,6 +1001,11 @@ def main():
     application.add_handler(CallbackQueryHandler(bot_management_callback, pattern="^admin_"))
     application.add_handler(CallbackQueryHandler(moderator_callback, pattern="^mod_"))
     application.add_handler(CallbackQueryHandler(messenger_callback, pattern="^msg_"))
+
+    # WebApp data handler (for Mini App)
+    application.add_handler(
+        MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_data_handler)
+    )
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
