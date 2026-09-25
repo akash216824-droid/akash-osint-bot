@@ -28,14 +28,14 @@ CHANNELS = [
 GROUP_LINK = "https://t.me/+oRfAbV_UhstmZDdh"
 
 # ---------- APIs ----------
-API_NUMBER = "https://akash-number-lookup.vercel.app/info?key=DEMO&query={}"
+API_NUMBER = "https://adityaxapi-jrys.onrender.com/api/number?key=BIRTHDAY&num={}"
 API_IFSC = "https://vercei-kappa.vercel.app/ifsc?code={}"
 API_PINCODE = "https://nitin-apis-update-birthday-spacial.vercel.app/api?type=pincode&search={}"
 API_WEATHER = "https://nitin-wather-check-api.vercel.app/api?type=weather&search={}"
 API_EMAIL = "https://travelers-creature-sarah-rogers.trycloudflare.com/search?q={}"
-API_AADHAR = "https://akash-adhar-lookup.vercel.app/info?key=DEMO&query={}"
+API_AADHAR = "https://adityaxapi-jrys.onrender.com/api/aadhar?key=BIRTHDAY&num={}"
 API_IP = "https://talks-chain-restrictions-statistics.trycloudflare.com/search?query={}"
-API_PAN = "https://counted-developing-parade-man.trycloudflare.com/pan-info?pan={}"
+API_PAN = "https://adityaxapi-jrys.onrender.com/api/pan?key=BIRTHDAY&pan={}"
 API_TG_TO_NUM = "https://akash-tg-num.vercel.app/info?key=DEMO&query={}"
 
 COINS_ON_START = 5
