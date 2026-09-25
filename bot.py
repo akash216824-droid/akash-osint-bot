@@ -28,7 +28,7 @@ CHANNELS = [
 GROUP_LINK = "https://t.me/+oRfAbV_UhstmZDdh"
 
 # ---------- APIs ----------
-API_NUMBER = "https://adityaxapi-jrys.onrender.com/api/number?key=BIRTHDAY&num={}"
+API_NUMBER = "https://akash-number-lookup.vercel.app/info?key=DEMO&query={}"
 API_IFSC = "https://vercei-kappa.vercel.app/ifsc?code={}"
 API_PINCODE = "https://nitin-apis-update-birthday-spacial.vercel.app/api?type=pincode&search={}"
 API_WEATHER = "https://nitin-wather-check-api.vercel.app/api?type=weather&search={}"
@@ -309,15 +309,79 @@ def format_number_output(data):
     return "**Number Lookup**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
 
 def format_aadhar_output(data):
-    if not data: return "❌ No data found."
-    if "error" in data: return f"❌ {data['error']}"
-    total = data.get("total_records", 0)
-    results = data.get("data", [])
-    if total == 0 or not results:
-        return "❌ No data found for this Aadhar."
-    clean_data = {"total_records": len(results), "data": results, "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"}
-    return "**Aadhar Lookup**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
+    if not data:
+        return "❌ No data found."
 
+    if "error" in data:
+        return f"❌ {data['error']}"
+
+    # New API structure
+    count = data.get("count", 0)
+    results = data.get("data", [])
+
+    if count == 0 or not results:
+        return "❌ No data found for this Aadhar."
+
+    # Clean records – सिर्फ जरूरी fields
+    clean_results = []
+    for record in results:
+        name = record.get("name")
+        phone = record.get("phoneNumber")
+        other = record.get("otherNumber")
+        address = record.get("address")
+        father = record.get("fathersName")
+        aadhar = record.get("aadharNumber")
+
+        # Skip अगर name खाली है और phone भी नहीं
+        if not name and not phone:
+            continue
+
+        clean_record = {}
+        if name:
+            clean_record["name"] = name
+        if father:
+            clean_record["fathersName"] = father
+        if phone:
+            # Format with +91
+            digits = re.sub(r"\D", "", str(phone))
+            if len(digits) == 10:
+                clean_record["phoneNumber"] = "+91" + digits
+            elif digits.startswith("91") and len(digits) == 12:
+                clean_record["phoneNumber"] = "+" + digits
+            else:
+                clean_record["phoneNumber"] = "+" + digits
+
+        if other:
+            o_digits = re.sub(r"\D", "", str(other))
+            if len(o_digits) == 10:
+                clean_record["otherNumber"] = "+91" + o_digits
+            elif o_digits.startswith("91") and len(o_digits) == 12:
+                clean_record["otherNumber"] = "+" + o_digits
+            else:
+                clean_record["otherNumber"] = "+" + o_digits
+
+        if address:
+            clean_record["address"] = address.strip()
+        if aadhar:
+            clean_record["aadharNumber"] = aadhar
+        clean_record["source"] = "inddata"
+
+        if clean_record:
+            clean_results.append(clean_record)
+
+    if not clean_results:
+        return "❌ No data found for this Aadhar."
+
+    clean_data = {
+        "total_records": len(clean_results),
+        "data": clean_results,
+        "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
+    }
+
+    out = "**Aadhar Lookup**\n```json\n"
+    out += json.dumps(clean_data, indent=4, ensure_ascii=False)
+    out += "\n```"
+    return out
 def format_tg_to_num_output(data):
     if not data: return "❌ No data found."
     if "error" in data: return f"❌ {data['error']}"
