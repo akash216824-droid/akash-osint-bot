@@ -286,12 +286,23 @@ def get_keyboard(user_id=None):
 
 # ---------- FORMAT ----------
 def format_number_output(data):
-    if not data: return "❌ No data found."
-    if "error" in data: return f"❌ {data['error']}"
+    if not data:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+
+    if "error" in data:
+        err = data["error"]
+        # अगर API "No data found" भेज रहा है → styled message
+        if err.lower() == "no data found":
+            return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+        # अगर "Invalid Key" है → वैसा ही रहने दें
+        return f"❌ {err}"
+
     total = data.get("total_records", 0)
     results = data.get("data", [])
+
     if total == 0 or not results:
-        return "❌ No data found for this number."
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+
     clean_results = []
     for record in results:
         clean_record = {}
@@ -302,12 +313,16 @@ def format_number_output(data):
             clean_record["email"] = record.get("email") or record.get("Email") or None
         if clean_record:
             clean_results.append(clean_record)
-    if not clean_results:
-        return "❌ No data found for this number."
-    clean_data = {"total_records": len(clean_results), "data": clean_results,
-                  "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"}
-    return "**Number Lookup**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
 
+    if not clean_results:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+
+    clean_data = {
+        "total_records": len(clean_results),
+        "data": clean_results,
+        "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
+    }
+    return "**Number Lookup**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
 def format_aadhar_output(data):
     if not data:
         return "❌ No data found."
