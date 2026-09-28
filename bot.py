@@ -28,7 +28,7 @@ CHANNELS = [
 GROUP_LINK = "https://t.me/+oRfAbV_UhstmZDdh"
 
 # ---------- APIs ----------
-API_NUMBER = "https://akash-number-lookup.vercel.app/info?key=DEMO&query={}"
+API_NUMBER = "https://akash-number-lookup.vercel.app/api/search?key=DEMO&query={}"
 API_IFSC = "https://vercei-kappa.vercel.app/ifsc?code={}"
 API_PINCODE = "https://nitin-apis-update-birthday-spacial.vercel.app/api?type=pincode&search={}"
 API_WEATHER = "https://nitin-wather-check-api.vercel.app/api?type=weather&search={}"
