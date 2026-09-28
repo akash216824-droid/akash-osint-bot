@@ -287,13 +287,13 @@ def get_keyboard(user_id=None):
 # ---------- FORMAT ----------
 def format_number_output(data):
     if not data:
-        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
 
     if "error" in data:
         err = data["error"]
         # अगर API "No data found" भेज रहा है → styled message
         if err.lower() == "no data found":
-            return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+            return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
         # अगर "Invalid Key" है → वैसा ही रहने दें
         return f"❌ {err}"
 
@@ -301,7 +301,7 @@ def format_number_output(data):
     results = data.get("data", [])
 
     if total == 0 or not results:
-        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
 
     clean_results = []
     for record in results:
@@ -315,7 +315,7 @@ def format_number_output(data):
             clean_results.append(clean_record)
 
     if not clean_results:
-        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
 
     clean_data = {
         "total_records": len(clean_results),
