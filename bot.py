@@ -36,7 +36,7 @@ API_EMAIL = "https://travelers-creature-sarah-rogers.trycloudflare.com/search?q=
 API_AADHAR = "https://adityaxapi-jrys.onrender.com/api/aadhar?key=BIRTHDAY&num={}"
 API_IP = "https://talks-chain-restrictions-statistics.trycloudflare.com/search?query={}"
 API_PAN = "https://adityaxapi-jrys.onrender.com/api/pan?key=BIRTHDAY&pan={}"
-API_TG_TO_NUM = "https://akash-tg-num.vercel.app/info?key=DEMO&query={}"
+API_TG_TO_NUM = "https://akash-telegram-to-number.vercel.app/resolve?key=DEMO&query={}"
 
 COINS_ON_START = 5
 COST_PER_LOOKUP = 1
