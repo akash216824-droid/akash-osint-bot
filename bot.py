@@ -51,7 +51,10 @@ MAX_LOG_ENTRIES = 200
 ADMIN_USERNAME = "@AK4SX"
 
 # ---------- TELEGRAM MESSAGE LIMIT ----------
-TELEGRAM_MAX_LEN = 4000  # 4096 limit, but 4000 safe
+TELEGRAM_MAX_LEN = 4000
+RECORDS_PER_PAGE = 4  # 4 records per page for Number Lookup
+
+DEV_CREDIT = "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
 
 
 # ---------- DATA ----------
@@ -174,12 +177,8 @@ def auto_cleaner():
         time.sleep(600)
 
 
-# ---------- SEND LONG MESSAGE (split into chunks) ----------
+# ---------- SEND LONG MESSAGE ----------
 async def send_long_message(update, text, reply_markup=None):
-    """
-    Telegram has 4096 char limit per message.
-    Split long messages into chunks and send each.
-    """
     if len(text) <= TELEGRAM_MAX_LEN:
         try:
             await update.message.reply_text(text, parse_mode="Markdown", reply_markup=reply_markup)
@@ -191,7 +190,6 @@ async def send_long_message(update, text, reply_markup=None):
                 print(f"Send error (plain): {e2}")
         return
 
-    # Split into chunks by lines
     chunks = []
     current = ""
     for line in text.split("\n"):
@@ -204,19 +202,104 @@ async def send_long_message(update, text, reply_markup=None):
     if current:
         chunks.append(current)
 
-    # Send all chunks
     for i, chunk in enumerate(chunks):
         is_last = (i == len(chunks) - 1)
         markup = reply_markup if is_last else None
         try:
             await update.message.reply_text(chunk, parse_mode="Markdown", reply_markup=markup)
         except Exception as e:
-            print(f"Chunk send error: {e}")
             try:
                 await update.message.reply_text(chunk, reply_markup=markup)
             except Exception as e2:
-                print(f"Chunk send error (plain): {e2}")
-        time.sleep(0.3)  # avoid flood
+                print(f"Chunk error: {e2}")
+        time.sleep(0.3)
+
+
+# ---------- PAGINATION HELPERS (for Number Lookup) ----------
+def build_page_text(records, page, total_pages):
+    """Build JSON text for a single page."""
+    start = page * RECORDS_PER_PAGE
+    end = start + RECORDS_PER_PAGE
+    page_records = records[start:end]
+
+    page_data = {
+        "page": page + 1,
+        "total_pages": total_pages,
+        "total_records": len(records),
+        "records_on_this_page": len(page_records),
+        "data": page_records,
+        "developer": DEV_CREDIT
+    }
+    return "**Number Lookup**\n```json\n" + json.dumps(page_data, indent=4, ensure_ascii=False) + "\n```"
+
+
+def get_pagination_keyboard(page, total_pages):
+    buttons = []
+    row = []
+
+    if page > 0:
+        row.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"pg_prev_{page}"))
+    else:
+        row.append(InlineKeyboardButton("⬅️ Prev", callback_data="pg_noop"))
+
+    row.append(InlineKeyboardButton(f"📄 {page + 1} / {total_pages}", callback_data="pg_noop"))
+
+    if page < total_pages - 1:
+        row.append(InlineKeyboardButton("Next ➡️", callback_data=f"pg_next_{page}"))
+    else:
+        row.append(InlineKeyboardButton("Next ➡️", callback_data="pg_noop"))
+
+    buttons.append(row)
+    return InlineKeyboardMarkup(buttons)
+
+
+async def send_paginated_number(update, context, records):
+    """Send Number Lookup records with pagination."""
+    total_pages = (len(records) + RECORDS_PER_PAGE - 1) // RECORDS_PER_PAGE
+    if total_pages < 1:
+        total_pages = 1
+
+    context.user_data["pg_records"] = records
+    context.user_data["pg_total"] = total_pages
+    context.user_data["pg_page"] = 0
+
+    text = build_page_text(records, 0, total_pages)
+    keyboard = get_pagination_keyboard(0, total_pages)
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+
+
+async def pagination_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    if data == "pg_noop":
+        return
+
+    records = context.user_data.get("pg_records")
+    if not records:
+        await query.edit_message_text("⚠️ Session expired. Please send the number again.")
+        return
+
+    total_pages = context.user_data.get("pg_total", 1)
+    current_page = context.user_data.get("pg_page", 0)
+
+    if data.startswith("pg_prev_"):
+        new_page = max(0, current_page - 1)
+    elif data.startswith("pg_next_"):
+        new_page = min(total_pages - 1, current_page + 1)
+    else:
+        return
+
+    context.user_data["pg_page"] = new_page
+
+    text = build_page_text(records, new_page, total_pages)
+    keyboard = get_pagination_keyboard(new_page, total_pages)
+
+    try:
+        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    except Exception as e:
+        print(f"Pagination edit error: {e}")
 
 
 # ---------- VERIFICATION ----------
@@ -320,6 +403,7 @@ def get_keyboard(user_id=None):
 
 # ---------- FORMAT FUNCTIONS ----------
 def format_number_output(data):
+    """Returns list of records for pagination, or string for errors."""
     if not data:
         return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
 
@@ -335,7 +419,6 @@ def format_number_output(data):
     if total == 0 or not results:
         return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
 
-    # NO LIMIT – show all records
     clean_results = []
     for record in results:
         clean_record = {}
@@ -350,12 +433,7 @@ def format_number_output(data):
     if not clean_results:
         return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
 
-    clean_data = {
-        "total_records": len(clean_results),
-        "data": clean_results,
-        "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
-    }
-    return "**Number Lookup**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
+    return clean_results  # list → pagination
 
 
 def format_aadhar_output(data):
@@ -365,7 +443,7 @@ def format_aadhar_output(data):
     results = data.get("data", [])
     if total == 0 or not results:
         return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝘼𝙙𝙝𝙖𝙖𝙧"
-    clean_data = {"total_records": len(results), "data": results, "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"}
+    clean_data = {"total_records": len(results), "data": results, "developer": DEV_CREDIT}
     return "**Aadhar Lookup**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
 
 
@@ -376,7 +454,7 @@ def format_tg_to_num_output(data):
     country = data.get("Country"); cc = data.get("Country Code")
     if not phone: return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙄𝘿"
     clean_data = {"Telegram ID": tg_id, "Phone": phone, "Country": country or "N/A",
-                  "Country Code": cc or "N/A", "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"}
+                  "Country Code": cc or "N/A", "developer": DEV_CREDIT}
     return "**TG to Num**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
 
 
@@ -386,7 +464,7 @@ def format_ifsc_output(data):
     ifsc_data = data.get("data", data) if isinstance(data.get("data"), dict) else data
     clean = {k: v for k, v in ifsc_data.items() if v is not None and v != ""}
     if not clean: return "❌ No data found."
-    clean["developer"] = "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
+    clean["developer"] = DEV_CREDIT
     return "**IFSC**\n```json\n" + json.dumps(clean, indent=4, ensure_ascii=False) + "\n```"
 
 
@@ -400,7 +478,7 @@ def format_pincode_output(data):
         "district": data.get("district") or "N/A", "division": data.get("division") or "N/A",
         "region": data.get("region") or "N/A", "state": data.get("state") or "N/A",
         "country": data.get("country") or "India",
-        "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
+        "developer": DEV_CREDIT
     }
     return "**PIN Code**\n```json\n" + json.dumps(clean, indent=4, ensure_ascii=False) + "\n```"
 
@@ -415,7 +493,7 @@ def format_weather_output(data):
         "feels_like": w.get("current", {}).get("temperature", {}).get("feels_like_c"),
         "humidity": w.get("current", {}).get("atmosphere", {}).get("humidity_percent"),
         "wind": w.get("current", {}).get("wind", {}).get("speed_kmh"),
-        "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
+        "developer": DEV_CREDIT
     }
     return "**Weather**\n```json\n" + json.dumps(clean, indent=4, ensure_ascii=False) + "\n```"
 
@@ -436,7 +514,7 @@ def format_pan_output(data):
     if not data: return "❌ No data found."
     results = data.get("data", [])
     if not results: return "❌ No data found."
-    clean = {"total_records": len(results), "data": results, "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"}
+    clean = {"total_records": len(results), "data": results, "developer": DEV_CREDIT}
     return "**PAN**\n```json\n" + json.dumps(clean, indent=4, ensure_ascii=False) + "\n```"
 
 
@@ -499,17 +577,29 @@ async def perform_lookup(update, context, lookup_type, input_text):
         await update.message.reply_text("❌ No results or service unavailable.")
         return
 
-    if lookup_type == "number": result = format_number_output(data)
-    elif lookup_type == "aadhar": result = format_aadhar_output(data)
-    elif lookup_type == "tg_to_num": result = format_tg_to_num_output(data)
-    elif lookup_type == "ifsc": result = format_ifsc_output(data)
-    elif lookup_type == "pincode": result = format_pincode_output(data)
-    elif lookup_type == "weather": result = format_weather_output(data)
-    elif lookup_type == "email": result = format_email_output(data)
-    elif lookup_type == "ip": result = format_ip_output(data)
-    elif lookup_type == "pan": result = format_pan_output(data)
-    else: result = "Unknown"
+    # ---------- Handle Number Lookup with pagination ----------
+    if lookup_type == "number":
+        result = format_number_output(data)
+        if isinstance(result, str):
+            # Error message or no data
+            await update.message.reply_text(result, reply_markup=get_keyboard(user_id))
+            return
+        # It's a list → paginate
+        await send_paginated_number(update, context, result)
+    else:
+        if lookup_type == "aadhar": result = format_aadhar_output(data)
+        elif lookup_type == "tg_to_num": result = format_tg_to_num_output(data)
+        elif lookup_type == "ifsc": result = format_ifsc_output(data)
+        elif lookup_type == "pincode": result = format_pincode_output(data)
+        elif lookup_type == "weather": result = format_weather_output(data)
+        elif lookup_type == "email": result = format_email_output(data)
+        elif lookup_type == "ip": result = format_ip_output(data)
+        elif lookup_type == "pan": result = format_pan_output(data)
+        else: result = "Unknown"
 
+        await send_long_message(update, result, reply_markup=get_keyboard(user_id))
+
+    # Save history & log
     ts = datetime.now().isoformat()
     entry = f"{lookup_type.upper()}: {input_text} ({ts})"
     if len(user_data["history"]) >= HISTORY_LIMIT:
@@ -517,9 +607,6 @@ async def perform_lookup(update, context, lookup_type, input_text):
     user_data["history"].append(entry)
     update_user_data(user_id, user_data)
     log_query(user_id, name, lookup_type, input_text)
-
-    # Use send_long_message to split if too long
-    await send_long_message(update, result, reply_markup=get_keyboard(user_id))
 
 
 # ---------- START ----------
@@ -1005,6 +1092,7 @@ def main():
     application.add_handler(CommandHandler("setphone", setphone))
 
     application.add_handler(CallbackQueryHandler(verify_callback, pattern="^verify$"))
+    application.add_handler(CallbackQueryHandler(pagination_callback, pattern="^pg_"))
     application.add_handler(CallbackQueryHandler(bot_management_callback, pattern="^admin_"))
     application.add_handler(CallbackQueryHandler(moderator_callback, pattern="^mod_"))
     application.add_handler(CallbackQueryHandler(messenger_callback, pattern="^msg_"))
