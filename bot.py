@@ -2,7 +2,6 @@ import json
 import os
 import re
 import sys
-import math
 import time
 import requests
 import threading
@@ -18,24 +17,26 @@ if not BOT_TOKEN:
 
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "8979291976").split(",")]
 
+# ---------- CHANNELS (4 TOTAL) ----------
 CHANNELS = [
     {"name": "Channel 1", "username": "@wftis_ak4sh", "link": "https://t.me/wftis_ak4sh"},
     {"name": "Channel 2", "username": "@Err9r403", "link": "https://t.me/Err9r403"},
     {"name": "Channel 3", "username": "@AkashOSINT", "link": "https://t.me/AkashOSINT"},
 ]
 
+# ---------- GROUP (optional) ----------
 GROUP_LINK = "https://t.me/+oRfAbV_UhstmZDdh"
 
 # ---------- APIs ----------
 API_NUMBER = "https://akash-number-lookup.vercel.app/api/search?key=DEMO&query={}"
-API_AADHAR = "https://akash-adhar-lookup.vercel.app/info?key=DEMO&query={}"
-API_TG_TO_NUM = "https://akash-telegram-to-number.vercel.app/resolve?key=DEMO&query={}"
 API_IFSC = "https://vercei-kappa.vercel.app/ifsc?code={}"
 API_PINCODE = "https://nitin-apis-update-birthday-spacial.vercel.app/api?type=pincode&search={}"
 API_WEATHER = "https://nitin-wather-check-api.vercel.app/api?type=weather&search={}"
 API_EMAIL = "https://travelers-creature-sarah-rogers.trycloudflare.com/search?q={}"
+API_AADHAR = "https://akash-adhar-lookup.vercel.app/info?key=DEMO&query={}"
 API_IP = "https://talks-chain-restrictions-statistics.trycloudflare.com/search?query={}"
 API_PAN = "https://counted-developing-parade-man.trycloudflare.com/pan-info?pan={}"
+API_TG_TO_NUM = "https://akash-telegram-to-number.vercel.app/resolve?key=DEMO&query={}"
 
 COINS_ON_START = 5
 COST_PER_LOOKUP = 1
@@ -49,11 +50,6 @@ QUERY_LOG_FILE = "query_log.json"
 ACCESS_FILE = "access_users.json"
 MAX_LOG_ENTRIES = 200
 ADMIN_USERNAME = "@AK4SX"
-
-TELEGRAM_MAX_LEN = 3500   # Safe limit (below 4096)
-PAGINATION_THRESHOLD = 10
-
-DEV_CREDIT = "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
 
 
 # ---------- DATA ----------
@@ -127,7 +123,7 @@ def update_user_data(uid, nd):
     save_data(data)
 
 
-# ---------- AUTO-DELETE ----------
+# ---------- AUTO-DELETE 24h ----------
 def clean_old_history():
     data = load_data()
     cutoff = datetime.now() - timedelta(hours=HISTORY_TTL_HOURS)
@@ -176,247 +172,23 @@ def auto_cleaner():
         time.sleep(600)
 
 
-# ---------- SAFE SEND HELPERS ----------
-async def safe_send(update_or_query, text, reply_markup=None, is_edit=False):
-    """
-    Safely send or edit a message.
-    Tries Markdown first; if fails, sends without parse_mode.
-    Splits into chunks if text > TELEGRAM_MAX_LEN.
-    Returns True if at least one message sent.
-    """
-    # Split into chunks
-    chunks = []
-    if len(text) <= TELEGRAM_MAX_LEN:
-        chunks = [text]
-    else:
-        current = ""
-        for line in text.split("\n"):
-            if len(current) + len(line) + 1 > TELEGRAM_MAX_LEN:
-                if current:
-                    chunks.append(current)
-                current = line + "\n"
-            else:
-                current += line + "\n"
-        if current:
-            chunks.append(current)
-
-    sent_any = False
-
-    for i, chunk in enumerate(chunks):
-        is_last = (i == len(chunks) - 1)
-        markup = reply_markup if is_last else None
-
-        try:
-            if is_edit and i == 0:
-                # Try editing existing message first
-                try:
-                    await update_or_query.edit_message_text(chunk, parse_mode="Markdown", reply_markup=markup)
-                    sent_any = True
-                    continue
-                except Exception:
-                    pass
-
-            # Try send with Markdown
-            if is_edit:
-                await update_or_query.message.reply_text(chunk, parse_mode="Markdown", reply_markup=markup)
-            else:
-                await update_or_query.message.reply_text(chunk, parse_mode="Markdown", reply_markup=markup)
-            sent_any = True
-        except Exception as e:
-            print(f"Markdown send failed: {e}")
-            # Fallback without Markdown
-            try:
-                if is_edit:
-                    await update_or_query.message.reply_text(chunk, reply_markup=markup)
-                else:
-                    await update_or_query.message.reply_text(chunk, reply_markup=markup)
-                sent_any = True
-            except Exception as e2:
-                print(f"Plain send failed: {e2}")
-
-        if i < len(chunks) - 1:
-            time.sleep(0.3)
-
-    return sent_any
-
-
-# ---------- PAGINATION HELPERS ----------
-def calculate_page_distribution(total):
-    if total <= PAGINATION_THRESHOLD:
-        return [total]
-    num_pages = max(2, math.ceil(total / 10))
-    base = total // num_pages
-    rem = total % num_pages
-    return [base + 1] * rem + [base] * (num_pages - rem)
-
-
-def build_pagination_text(records, page, sizes, query_number):
-    total_pages = len(sizes)
-    start = sum(sizes[:page])
-    end = start + sizes[page]
-    page_records = records[start:end]
-
-    header = (
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        f"📄 **PAGE {page + 1} / {total_pages}**\n"
-        f"📱 **Number:** `{query_number}`\n"
-        f"📊 **Total Records:** {len(records)}\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-    )
-
-    page_data = {
-        "page": page + 1,
-        "total_pages": total_pages,
-        "total_records": len(records),
-        "showing": f"{start + 1}-{end}",
-        "records_on_this_page": len(page_records),
-        "data": page_records,
-        "developer": DEV_CREDIT
-    }
-    json_part = "```json\n" + json.dumps(page_data, indent=4, ensure_ascii=False) + "\n```"
-    footer = (
-        "\n━━━━━━━━━━━━━━━━━━━━\n"
-        f"📊 Showing {start + 1}–{end} of {len(records)}\n"
-        "━━━━━━━━━━━━━━━━━━━━"
-    )
-    return header + json_part + footer
-
-
-def build_single_text(records, query_number):
-    clean_data = {
-        "status": "success",
-        "total_records": len(records),
-        "number": query_number,
-        "data": records,
-        "developer": DEV_CREDIT
-    }
-    return "**Number Lookup**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
-
-
-def build_no_data(query_number):
-    no_data = {
-        "status": "success",
-        "message": "No Data For This Number",
-        "query": query_number,
-        "data": None
-    }
-    return "```json\n" + json.dumps(no_data, indent=2, ensure_ascii=False) + "\n```"
-
-
-def pagination_keyboard(page, total_pages):
-    row = []
-    if page > 0:
-        row.append(InlineKeyboardButton("◀️ Previous", callback_data=f"pg_prev_{page}"))
-    else:
-        row.append(InlineKeyboardButton("◀️ Previous", callback_data="pg_noop"))
-    row.append(InlineKeyboardButton(f"{page + 1} / {total_pages}", callback_data="pg_noop"))
-    if page < total_pages - 1:
-        row.append(InlineKeyboardButton("Next ▶️", callback_data=f"pg_next_{page}"))
-    else:
-        row.append(InlineKeyboardButton("Next ▶️", callback_data="pg_noop"))
-    return InlineKeyboardMarkup([row])
-
-
-async def send_number_result(update, context, records, query_number):
-    """Send Number Lookup result with pagination if >10 records."""
-    total = len(records)
-
-    # No data
-    if total == 0:
-        text = build_no_data(query_number)
-        await safe_send(update, text, reply_markup=get_keyboard(update.effective_user.id))
-        return
-
-    # ≤ 10 → single message
-    if total <= PAGINATION_THRESHOLD:
-        text = build_single_text(records, query_number)
-        await safe_send(update, text, reply_markup=get_keyboard(update.effective_user.id))
-        return
-
-    # > 10 → paginated
-    sizes = calculate_page_distribution(total)
-    total_pages = len(sizes)
-
-    context.user_data["pg_records"] = records
-    context.user_data["pg_sizes"] = sizes
-    context.user_data["pg_total"] = total_pages
-    context.user_data["pg_page"] = 0
-    context.user_data["pg_query"] = query_number
-
-    text = build_pagination_text(records, 0, sizes, query_number)
-    keyboard = pagination_keyboard(0, total_pages)
-
-    # Try to send
-    try:
-        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
-    except Exception as e:
-        print(f"Paginated send (markdown) failed: {e}")
-        # Fallback: JSON only
-        page_data = {
-            "page": 1,
-            "total_pages": total_pages,
-            "total_records": total,
-            "showing": f"1-{sizes[0]}",
-            "data": records[:sizes[0]],
-            "developer": DEV_CREDIT
-        }
-        fallback = "```json\n" + json.dumps(page_data, indent=4, ensure_ascii=False) + "\n```"
-        try:
-            await update.message.reply_text(fallback, parse_mode="Markdown", reply_markup=keyboard)
-        except Exception:
-            await update.message.reply_text(fallback, reply_markup=keyboard)
-
-
-async def pagination_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    data = query.data
-    if data == "pg_noop":
-        return
-
-    records = context.user_data.get("pg_records")
-    sizes = context.user_data.get("pg_sizes")
-    qnum = context.user_data.get("pg_query")
-
-    if not records or not sizes:
-        await query.edit_message_text("⚠️ Session expired. Please send the number again.")
-        return
-
-    total_pages = context.user_data.get("pg_total", len(sizes))
-    current = context.user_data.get("pg_page", 0)
-
-    if data.startswith("pg_prev_"):
-        new_page = max(0, current - 1)
-    elif data.startswith("pg_next_"):
-        new_page = min(total_pages - 1, current + 1)
-    else:
-        return
-
-    context.user_data["pg_page"] = new_page
-
-    text = build_pagination_text(records, new_page, sizes, qnum)
-    keyboard = pagination_keyboard(new_page, total_pages)
-
-    try:
-        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=keyboard)
-    except Exception as e:
-        print(f"Pagination edit failed: {e}")
-        try:
-            await query.edit_message_text(text, reply_markup=keyboard)
-        except Exception as e2:
-            print(f"Pagination fallback failed: {e2}")
-
-
 # ---------- VERIFICATION ----------
 async def check_verification(user_id, context):
     for ch in CHANNELS:
         try:
-            member = await context.bot.get_chat_member(chat_id=ch["username"], user_id=user_id)
-            if member.status not in ["member", "administrator", "creator"]:
+            member = await context.bot.get_chat_member(
+                chat_id=ch["username"], user_id=user_id
+            )
+            status = getattr(member, "status", None)
+            if status not in ["member", "administrator", "creator"]:
                 return False, ch["name"]
         except Exception as e:
+            err = str(e).lower()
             print(f"Verify error for {ch['username']}: {e}")
+            if "chat not found" in err or "not enough rights" in err or "bot is not a member" in err:
+                return False, f"{ch['name']} (Bot not admin)"
+            if "user not found" in err or "participant" in err:
+                return False, ch["name"]
             return False, ch["name"]
     return True, None
 
@@ -427,6 +199,7 @@ async def is_verified(user_id, context):
         return False
     ok, _ = await check_verification(user_id, context)
     return ok
+
 
 def get_verify_keyboard():
     kb = [
@@ -507,91 +280,122 @@ def get_keyboard(user_id=None):
     return get_user_keyboard()
 
 
-# ---------- FORMAT FUNCTIONS ---------
+# ---------- FORMAT FUNCTIONS ----------
 def format_number_output(data):
-    """Returns list of records OR dict for no-data/error."""
     if not data:
-        return {"status": "success", "message": "No Data For This Number", "data": None}
-
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
     if "error" in data:
         err = data["error"]
         if err.lower() == "no data found":
-            return {"status": "success", "message": "No Data For This Number", "data": None}
-        return {"status": "error", "message": err, "data": None}
-
+            return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+        return f"❌ {err}"
     total = data.get("total_records", 0)
     results = data.get("data", [])
-
-    # IMPORTANT: no data if empty OR no valid mobile field
     if total == 0 or not results:
-        return {"status": "success", "message": "No Data For This Number", "data": None}
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+    clean_results = []
+    for record in results:
+        clean_record = {}
+        for k, v in record.items():
+            if v is not None and v != "" and v != "N/A":
+                clean_record[k] = v
+        if "email" not in clean_record:
+            clean_record["email"] = record.get("email") or record.get("Email") or None
+        if clean_record:
+            clean_results.append(clean_record)
+    if not clean_results:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+    clean_data = {
+        "total_records": len(clean_results),
+        "data": clean_results,
+        "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
+    }
+    return "**Number Lookup**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
 
-    clean = []
-    for r in results:
-        # Skip records where mobile is missing or has masked chars
-        mobile = r.get("mobile", "")
-        if not mobile or "***" in mobile or len(re.sub(r"\D", "", mobile)) < 10:
-            continue
-        cr = {k: v for k, v in r.items() if v is not None and v != "" and v != "N/A"}
-        if "email" not in cr:
-            cr["email"] = r.get("email") or r.get("Email") or None
-        if cr:
-            clean.append(cr)
-
-    if not clean:
-        return {"status": "success", "message": "No Data For This Number", "data": None}
-
-    return clean
 def format_aadhar_output(data):
-    if not data: return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝘼𝙙𝙝𝙖𝙖𝙧"
-    if "error" in data: return f"❌ {data['error']}"
+    if not data:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+    if "error" in data:
+        err = data["error"]
+        if err.lower() == "no data found":
+            return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+        return f"❌ {err}"
     total = data.get("total_records", 0)
     results = data.get("data", [])
     if total == 0 or not results:
-        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝘼𝙙𝙝𝙖𝙖𝙧"
-    clean_data = {"total_records": len(results), "data": results, "developer": DEV_CREDIT}
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+    clean_results = []
+    for record in results:
+        clean_record = {}
+        for k, v in record.items():
+            if v is not None and v != "" and v != "N/A":
+                clean_record[k] = v
+        if clean_record:
+            clean_results.append(clean_record)
+    if not clean_results:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+    clean_data = {
+        "total_records": len(clean_results),
+        "data": clean_results,
+        "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
+    }
     return "**Aadhar Lookup**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
 
-
 def format_tg_to_num_output(data):
-    if not data: return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙄𝘿"
-    if "error" in data: return f"❌ {data['error']}"
-    tg_id = data.get("Telegram ID"); phone = data.get("Phone")
-    country = data.get("Country"); cc = data.get("Country Code")
-    if not phone: return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙄𝘿"
-    clean_data = {"Telegram ID": tg_id, "Phone": phone, "Country": country or "N/A",
-                  "Country Code": cc or "N/A", "developer": DEV_CREDIT}
+    if not data:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+    if "error" in data:
+        err = data["error"]
+        if err.lower() == "no data found":
+            return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+        return f"❌ {err}"
+    tg_id = data.get("Telegram ID")
+    phone = data.get("Phone")
+    country = data.get("Country")
+    cc = data.get("Country Code")
+    if not phone:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+    clean_data = {
+        "Telegram ID": tg_id,
+        "Phone": phone,
+        "Country": country or "N/A",
+        "Country Code": cc or "N/A",
+        "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
+    }
     return "**TG to Num**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
 
-
 def format_ifsc_output(data):
-    if not data: return "❌ No data found."
-    if "success" in data and data["success"] == False: return "❌ Invalid IFSC."
+    if not data:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+    if "success" in data and data["success"] == False:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
     ifsc_data = data.get("data", data) if isinstance(data.get("data"), dict) else data
     clean = {k: v for k, v in ifsc_data.items() if v is not None and v != ""}
-    if not clean: return "❌ No data found."
-    clean["developer"] = DEV_CREDIT
+    if not clean:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+    clean["developer"] = "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
     return "**IFSC**\n```json\n" + json.dumps(clean, indent=4, ensure_ascii=False) + "\n```"
-
 
 def format_pincode_output(data):
     if not data or data.get("status") != "success":
-        return "❌ No data found."
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
     clean = {
-        "status": data.get("status"), "pincode": data.get("pincode", "N/A"),
+        "status": data.get("status"),
+        "pincode": data.get("pincode", "N/A"),
         "total_records_found": data.get("total_records_found") or 1,
         "delivery_status": data.get("delivery_status") or "N/A",
-        "district": data.get("district") or "N/A", "division": data.get("division") or "N/A",
-        "region": data.get("region") or "N/A", "state": data.get("state") or "N/A",
+        "district": data.get("district") or "N/A",
+        "division": data.get("division") or "N/A",
+        "region": data.get("region") or "N/A",
+        "state": data.get("state") or "N/A",
         "country": data.get("country") or "India",
-        "developer": DEV_CREDIT
+        "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
     }
     return "**PIN Code**\n```json\n" + json.dumps(clean, indent=4, ensure_ascii=False) + "\n```"
 
-
 def format_weather_output(data):
     if not data or not data.get("success") or not data.get("data"):
-        return "❌ No weather data."
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
     w = data["data"]
     clean = {
         "city": w.get("city", {}).get("searched"),
@@ -599,28 +403,34 @@ def format_weather_output(data):
         "feels_like": w.get("current", {}).get("temperature", {}).get("feels_like_c"),
         "humidity": w.get("current", {}).get("atmosphere", {}).get("humidity_percent"),
         "wind": w.get("current", {}).get("wind", {}).get("speed_kmh"),
-        "developer": DEV_CREDIT
+        "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
     }
     return "**Weather**\n```json\n" + json.dumps(clean, indent=4, ensure_ascii=False) + "\n```"
 
-
 def format_email_output(data):
-    if not data: return "❌ No data found."
+    if not data:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
     results = data.get("results") or data.get("data") or []
-    if not results: return "❌ No data found."
+    if not results:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
     return "**Email**\n```json\n" + json.dumps(results, indent=4, ensure_ascii=False) + "\n```"
 
-
 def format_ip_output(data):
-    if not data: return "❌ No data found."
+    if not data:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
     return "**IP**\n```json\n" + json.dumps(data, indent=4, ensure_ascii=False) + "\n```"
 
-
 def format_pan_output(data):
-    if not data: return "❌ No data found."
+    if not data:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
     results = data.get("data", [])
-    if not results: return "❌ No data found."
-    clean = {"total_records": len(results), "data": results, "developer": DEV_CREDIT}
+    if not results:
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+    clean = {
+        "total_records": len(results),
+        "data": results,
+        "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
+    }
     return "**PAN**\n```json\n" + json.dumps(clean, indent=4, ensure_ascii=False) + "\n```"
 
 
@@ -649,8 +459,6 @@ async def perform_lookup(update, context, lookup_type, input_text):
             return
         user_data["coins"] -= COST_PER_LOOKUP
 
-    query_number = input_text
-
     if lookup_type == "number":
         digits = re.sub(r"\D", "", input_text)
         if len(digits) == 10:
@@ -658,10 +466,9 @@ async def perform_lookup(update, context, lookup_type, input_text):
         elif len(digits) == 12 and digits.startswith("91"):
             pass
         else:
-            await update.message.reply_text("❌ Invalid number. Please send 10-digit Indian mobile number.")
+            await update.message.reply_text("❌ Invalid number.")
             return
         url = API_NUMBER.format(digits)
-        query_number = digits
     elif lookup_type == "aadhar": url = API_AADHAR.format(input_text)
     elif lookup_type == "tg_to_num": url = API_TG_TO_NUM.format(input_text)
     elif lookup_type == "ifsc": url = API_IFSC.format(input_text)
@@ -674,68 +481,26 @@ async def perform_lookup(update, context, lookup_type, input_text):
         await update.message.reply_text("Unknown lookup.")
         return
 
-    # ---------- Try API Call with Retries ----------
-    data = None
-    last_error = None
-    for attempt in range(3):
-        try:
-            r = requests.get(url, timeout=90)
-            r.raise_for_status()
-            try:
-                data = r.json()
-                break
-            except json.JSONDecodeError:
-                data = {"_raw": r.text}
-                break
-        except Exception as e:
-            last_error = e
-            print(f"Attempt {attempt + 1} failed: {e}")
-            time.sleep(1)
-
-    if data is None:
-        # All attempts failed
-        if lookup_type == "number":
-            text = build_no_data(query_number)
-            await safe_send(update, text, reply_markup=get_keyboard(user_id))
-        else:
-            await update.message.reply_text("❌ Service unavailable. Please try again.")
+    try:
+        r = requests.get(url, timeout=25)
+        r.raise_for_status()
+        try: data = r.json()
+        except: data = {"_raw": r.text}
+    except Exception:
+        await update.message.reply_text("❌ No results or service unavailable.")
         return
 
-    # ---------- Format result ----------
-    if lookup_type == "number":
-        result = format_number_output(data)
+    if lookup_type == "number": result = format_number_output(data)
+    elif lookup_type == "aadhar": result = format_aadhar_output(data)
+    elif lookup_type == "tg_to_num": result = format_tg_to_num_output(data)
+    elif lookup_type == "ifsc": result = format_ifsc_output(data)
+    elif lookup_type == "pincode": result = format_pincode_output(data)
+    elif lookup_type == "weather": result = format_weather_output(data)
+    elif lookup_type == "email": result = format_email_output(data)
+    elif lookup_type == "ip": result = format_ip_output(data)
+    elif lookup_type == "pan": result = format_pan_output(data)
+    else: result = "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
 
-        # No data / error case
-        if isinstance(result, dict):
-            no_data = {
-                "status": result.get("status", "success"),
-                "message": result.get("message", "No Data For This Number"),
-                "query": query_number,
-                "data": None
-            }
-            text = "```json\n" + json.dumps(no_data, indent=2, ensure_ascii=False) + "\n```"
-            try:
-                await update.message.reply_text(text, parse_mode="Markdown", reply_markup=get_keyboard(user_id))
-            except Exception:
-                await update.message.reply_text(text, reply_markup=get_keyboard(user_id))
-        else:
-            # It's a list → send with pagination
-            await send_number_result(update, context, result, query_number)
-    else:
-        # Other lookups
-        if lookup_type == "aadhar": result = format_aadhar_output(data)
-        elif lookup_type == "tg_to_num": result = format_tg_to_num_output(data)
-        elif lookup_type == "ifsc": result = format_ifsc_output(data)
-        elif lookup_type == "pincode": result = format_pincode_output(data)
-        elif lookup_type == "weather": result = format_weather_output(data)
-        elif lookup_type == "email": result = format_email_output(data)
-        elif lookup_type == "ip": result = format_ip_output(data)
-        elif lookup_type == "pan": result = format_pan_output(data)
-        else: result = "Unknown"
-
-        await safe_send(update, result, reply_markup=get_keyboard(user_id))
-
-    # Save history
     ts = datetime.now().isoformat()
     entry = f"{lookup_type.upper()}: {input_text} ({ts})"
     if len(user_data["history"]) >= HISTORY_LIMIT:
@@ -743,6 +508,8 @@ async def perform_lookup(update, context, lookup_type, input_text):
     user_data["history"].append(entry)
     update_user_data(user_id, user_data)
     log_query(user_id, name, lookup_type, input_text)
+
+    await update.message.reply_text(result, parse_mode="Markdown", reply_markup=get_keyboard(user_id))
 
 
 # ---------- START ----------
@@ -790,7 +557,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("Start error:", e)
 
 
-# ---------- VERIFY ----------
+# ---------- VERIFY CALLBACK ----------
 async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         query = update.callback_query
@@ -804,7 +571,8 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ok, missing = await check_verification(user_id, context)
         if ok:
             await query.edit_message_text(
-                "✅ Verification successful!\n\nNow use /start to access the bot.",
+                "✅ Verification successful!\n\n"
+                "Now use /start to access the bot.",
                 reply_markup=None
             )
         else:
@@ -1208,11 +976,12 @@ def main():
     application = (
         Application.builder()
         .token(BOT_TOKEN)
-        .read_timeout(60).write_timeout(60)
-        .connect_timeout(60).pool_timeout(60)
+        .read_timeout(30).write_timeout(30)
+        .connect_timeout(30).pool_timeout(30)
         .build()
     )
 
+    # Delete webhook first
     try:
         import asyncio
         loop = asyncio.new_event_loop()
@@ -1227,7 +996,6 @@ def main():
     application.add_handler(CommandHandler("setphone", setphone))
 
     application.add_handler(CallbackQueryHandler(verify_callback, pattern="^verify$"))
-    application.add_handler(CallbackQueryHandler(pagination_callback, pattern="^pg_"))
     application.add_handler(CallbackQueryHandler(bot_management_callback, pattern="^admin_"))
     application.add_handler(CallbackQueryHandler(moderator_callback, pattern="^mod_"))
     application.add_handler(CallbackQueryHandler(messenger_callback, pattern="^msg_"))
@@ -1244,7 +1012,7 @@ def main():
 
     application.run_polling(
         poll_interval=1.0,
-        timeout=60,
+        timeout=30,
         drop_pending_updates=True
     )
 
