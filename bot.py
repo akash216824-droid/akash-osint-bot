@@ -50,6 +50,9 @@ ACCESS_FILE = "access_users.json"
 MAX_LOG_ENTRIES = 200
 ADMIN_USERNAME = "@AK4SX"
 
+# ---------- TELEGRAM MESSAGE LIMIT ----------
+TELEGRAM_MAX_LEN = 4000  # 4096 limit, but 4000 safe
+
 
 # ---------- DATA ----------
 def load_data():
@@ -171,6 +174,51 @@ def auto_cleaner():
         time.sleep(600)
 
 
+# ---------- SEND LONG MESSAGE (split into chunks) ----------
+async def send_long_message(update, text, reply_markup=None):
+    """
+    Telegram has 4096 char limit per message.
+    Split long messages into chunks and send each.
+    """
+    if len(text) <= TELEGRAM_MAX_LEN:
+        try:
+            await update.message.reply_text(text, parse_mode="Markdown", reply_markup=reply_markup)
+        except Exception as e:
+            print(f"Send error (markdown): {e}")
+            try:
+                await update.message.reply_text(text, reply_markup=reply_markup)
+            except Exception as e2:
+                print(f"Send error (plain): {e2}")
+        return
+
+    # Split into chunks by lines
+    chunks = []
+    current = ""
+    for line in text.split("\n"):
+        if len(current) + len(line) + 1 > TELEGRAM_MAX_LEN:
+            if current:
+                chunks.append(current)
+            current = line + "\n"
+        else:
+            current += line + "\n"
+    if current:
+        chunks.append(current)
+
+    # Send all chunks
+    for i, chunk in enumerate(chunks):
+        is_last = (i == len(chunks) - 1)
+        markup = reply_markup if is_last else None
+        try:
+            await update.message.reply_text(chunk, parse_mode="Markdown", reply_markup=markup)
+        except Exception as e:
+            print(f"Chunk send error: {e}")
+            try:
+                await update.message.reply_text(chunk, reply_markup=markup)
+            except Exception as e2:
+                print(f"Chunk send error (plain): {e2}")
+        time.sleep(0.3)  # avoid flood
+
+
 # ---------- VERIFICATION ----------
 async def check_verification(user_id, context):
     for ch in CHANNELS:
@@ -273,19 +321,19 @@ def get_keyboard(user_id=None):
 # ---------- FORMAT FUNCTIONS ----------
 def format_number_output(data):
     if not data:
-        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
 
     if "error" in data:
         err = data["error"]
         if err.lower() == "no data found":
-            return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+            return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
         return f"❌ {err}"
 
     total = data.get("total_records", 0)
     results = data.get("data", [])
 
     if total == 0 or not results:
-        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
 
     # NO LIMIT – show all records
     clean_results = []
@@ -300,7 +348,7 @@ def format_number_output(data):
             clean_results.append(clean_record)
 
     if not clean_results:
-        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
 
     clean_data = {
         "total_records": len(clean_results),
@@ -311,22 +359,22 @@ def format_number_output(data):
 
 
 def format_aadhar_output(data):
-    if not data: return "❌ No data found."
+    if not data: return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝘼𝙙𝙝𝙖𝙖𝙧"
     if "error" in data: return f"❌ {data['error']}"
     total = data.get("total_records", 0)
     results = data.get("data", [])
     if total == 0 or not results:
-        return "❌ No data found for this Aadhar."
+        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝘼𝙙𝙝𝙖𝙖𝙧"
     clean_data = {"total_records": len(results), "data": results, "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"}
     return "**Aadhar Lookup**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
 
 
 def format_tg_to_num_output(data):
-    if not data: return "❌ No data found."
+    if not data: return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙄𝘿"
     if "error" in data: return f"❌ {data['error']}"
     tg_id = data.get("Telegram ID"); phone = data.get("Phone")
     country = data.get("Country"); cc = data.get("Country Code")
-    if not phone: return "❌ No data found."
+    if not phone: return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙄𝘿"
     clean_data = {"Telegram ID": tg_id, "Phone": phone, "Country": country or "N/A",
                   "Country Code": cc or "N/A", "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"}
     return "**TG to Num**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
@@ -440,7 +488,7 @@ async def perform_lookup(update, context, lookup_type, input_text):
         return
 
     try:
-        r = requests.get(url, timeout=25)
+        r = requests.get(url, timeout=60)
         r.raise_for_status()
         try:
             data = r.json()
@@ -470,7 +518,8 @@ async def perform_lookup(update, context, lookup_type, input_text):
     update_user_data(user_id, user_data)
     log_query(user_id, name, lookup_type, input_text)
 
-    await update.message.reply_text(result, parse_mode="Markdown", reply_markup=get_keyboard(user_id))
+    # Use send_long_message to split if too long
+    await send_long_message(update, result, reply_markup=get_keyboard(user_id))
 
 
 # ---------- START ----------
