@@ -50,7 +50,7 @@ ACCESS_FILE = "access_users.json"
 MAX_LOG_ENTRIES = 200
 ADMIN_USERNAME = "@AK4SX"
 
-TELEGRAM_MAX_LEN = 4000
+TELEGRAM_MAX_LEN = 3500   # Safe limit (below 4096)
 PAGINATION_THRESHOLD = 10
 
 DEV_CREDIT = "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
@@ -176,60 +176,84 @@ def auto_cleaner():
         time.sleep(600)
 
 
-# ---------- SEND LONG MESSAGE ----------
-async def send_long_message(update, text, reply_markup=None):
-    """Split long messages into chunks (safe for Telegram 4096 limit)."""
-    if len(text) <= TELEGRAM_MAX_LEN:
-        try:
-            await update.message.reply_text(text, parse_mode="Markdown", reply_markup=reply_markup)
-        except Exception:
-            try:
-                await update.message.reply_text(text, reply_markup=reply_markup)
-            except Exception as e:
-                print(f"Send error: {e}")
-        return
-
+# ---------- SAFE SEND HELPERS ----------
+async def safe_send(update_or_query, text, reply_markup=None, is_edit=False):
+    """
+    Safely send or edit a message.
+    Tries Markdown first; if fails, sends without parse_mode.
+    Splits into chunks if text > TELEGRAM_MAX_LEN.
+    Returns True if at least one message sent.
+    """
+    # Split into chunks
     chunks = []
-    current = ""
-    for line in text.split("\n"):
-        if len(current) + len(line) + 1 > TELEGRAM_MAX_LEN:
-            if current:
-                chunks.append(current)
-            current = line + "\n"
-        else:
-            current += line + "\n"
-    if current:
-        chunks.append(current)
+    if len(text) <= TELEGRAM_MAX_LEN:
+        chunks = [text]
+    else:
+        current = ""
+        for line in text.split("\n"):
+            if len(current) + len(line) + 1 > TELEGRAM_MAX_LEN:
+                if current:
+                    chunks.append(current)
+                current = line + "\n"
+            else:
+                current += line + "\n"
+        if current:
+            chunks.append(current)
+
+    sent_any = False
 
     for i, chunk in enumerate(chunks):
         is_last = (i == len(chunks) - 1)
         markup = reply_markup if is_last else None
+
         try:
-            await update.message.reply_text(chunk, parse_mode="Markdown", reply_markup=markup)
-        except Exception:
+            if is_edit and i == 0:
+                # Try editing existing message first
+                try:
+                    await update_or_query.edit_message_text(chunk, parse_mode="Markdown", reply_markup=markup)
+                    sent_any = True
+                    continue
+                except Exception:
+                    pass
+
+            # Try send with Markdown
+            if is_edit:
+                await update_or_query.message.reply_text(chunk, parse_mode="Markdown", reply_markup=markup)
+            else:
+                await update_or_query.message.reply_text(chunk, parse_mode="Markdown", reply_markup=markup)
+            sent_any = True
+        except Exception as e:
+            print(f"Markdown send failed: {e}")
+            # Fallback without Markdown
             try:
-                await update.message.reply_text(chunk, reply_markup=markup)
-            except Exception as e:
-                print(f"Chunk error: {e}")
-        time.sleep(0.3)
+                if is_edit:
+                    await update_or_query.message.reply_text(chunk, reply_markup=markup)
+                else:
+                    await update_or_query.message.reply_text(chunk, reply_markup=markup)
+                sent_any = True
+            except Exception as e2:
+                print(f"Plain send failed: {e2}")
+
+        if i < len(chunks) - 1:
+            time.sleep(0.3)
+
+    return sent_any
 
 
-# ---------- PAGINATION ----------
-def calculate_page_distribution(total_records):
-    """Return page sizes – even distribution if >10."""
-    if total_records <= PAGINATION_THRESHOLD:
-        return [total_records]
-    num_pages = max(2, math.ceil(total_records / 10))
-    base = total_records // num_pages
-    remainder = total_records % num_pages
-    return [base + 1] * remainder + [base] * (num_pages - remainder)
+# ---------- PAGINATION HELPERS ----------
+def calculate_page_distribution(total):
+    if total <= PAGINATION_THRESHOLD:
+        return [total]
+    num_pages = max(2, math.ceil(total / 10))
+    base = total // num_pages
+    rem = total % num_pages
+    return [base + 1] * rem + [base] * (num_pages - rem)
 
 
-def build_page_text(records, page, page_sizes, query_number):
-    """Build JSON text for a single page."""
-    total_pages = len(page_sizes)
-    start = sum(page_sizes[:page])
-    end = start + page_sizes[page]
+def build_pagination_text(records, page, sizes, query_number):
+    total_pages = len(sizes)
+    start = sum(sizes[:page])
+    end = start + sizes[page]
     page_records = records[start:end]
 
     header = (
@@ -249,9 +273,7 @@ def build_page_text(records, page, page_sizes, query_number):
         "data": page_records,
         "developer": DEV_CREDIT
     }
-
     json_part = "```json\n" + json.dumps(page_data, indent=4, ensure_ascii=False) + "\n```"
-
     footer = (
         "\n━━━━━━━━━━━━━━━━━━━━\n"
         f"📊 Showing {start + 1}–{end} of {len(records)}\n"
@@ -260,8 +282,7 @@ def build_page_text(records, page, page_sizes, query_number):
     return header + json_part + footer
 
 
-def build_single_page_text(records, query_number):
-    """Single page JSON (no pagination)."""
+def build_single_text(records, query_number):
     clean_data = {
         "status": "success",
         "total_records": len(records),
@@ -272,7 +293,17 @@ def build_single_page_text(records, query_number):
     return "**Number Lookup**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
 
 
-def get_pagination_keyboard(page, total_pages):
+def build_no_data(query_number):
+    no_data = {
+        "status": "success",
+        "message": "No Data For This Number",
+        "query": query_number,
+        "data": None
+    }
+    return "```json\n" + json.dumps(no_data, indent=2, ensure_ascii=False) + "\n```"
+
+
+def pagination_keyboard(page, total_pages):
     row = []
     if page > 0:
         row.append(InlineKeyboardButton("◀️ Previous", callback_data=f"pg_prev_{page}"))
@@ -286,59 +317,47 @@ def get_pagination_keyboard(page, total_pages):
     return InlineKeyboardMarkup([row])
 
 
-def build_no_data_response(query_number):
-    """Build the no-data JSON response."""
-    no_data = {
-        "status": "success",
-        "message": "No Data For This Number",
-        "query": query_number,
-        "data": None
-    }
-    return "```json\n" + json.dumps(no_data, indent=2, ensure_ascii=False) + "\n```"
+async def send_number_result(update, context, records, query_number):
+    """Send Number Lookup result with pagination if >10 records."""
+    total = len(records)
 
-
-async def send_paginated_number(update, context, records, query_number):
-    """Send records – single page if ≤10, paginated if >10."""
-    total_records = len(records)
-
-    if total_records == 0:
-        text = build_no_data_response(query_number)
-        try:
-            await update.message.reply_text(text, parse_mode="Markdown")
-        except Exception:
-            await update.message.reply_text(text)
+    # No data
+    if total == 0:
+        text = build_no_data(query_number)
+        await safe_send(update, text, reply_markup=get_keyboard(update.effective_user.id))
         return
 
     # ≤ 10 → single message
-    if total_records <= PAGINATION_THRESHOLD:
-        text = build_single_page_text(records, query_number)
-        await send_long_message(update, text, reply_markup=get_keyboard(update.effective_user.id))
+    if total <= PAGINATION_THRESHOLD:
+        text = build_single_text(records, query_number)
+        await safe_send(update, text, reply_markup=get_keyboard(update.effective_user.id))
         return
 
     # > 10 → paginated
-    page_sizes = calculate_page_distribution(total_records)
-    total_pages = len(page_sizes)
+    sizes = calculate_page_distribution(total)
+    total_pages = len(sizes)
 
     context.user_data["pg_records"] = records
-    context.user_data["pg_sizes"] = page_sizes
+    context.user_data["pg_sizes"] = sizes
     context.user_data["pg_total"] = total_pages
     context.user_data["pg_page"] = 0
     context.user_data["pg_query"] = query_number
 
-    text = build_page_text(records, 0, page_sizes, query_number)
-    keyboard = get_pagination_keyboard(0, total_pages)
+    text = build_pagination_text(records, 0, sizes, query_number)
+    keyboard = pagination_keyboard(0, total_pages)
 
+    # Try to send
     try:
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
     except Exception as e:
-        print(f"Paginated send error: {e}")
+        print(f"Paginated send (markdown) failed: {e}")
         # Fallback: JSON only
         page_data = {
             "page": 1,
             "total_pages": total_pages,
-            "total_records": total_records,
-            "showing": f"1-{page_sizes[0]}",
-            "data": records[:page_sizes[0]],
+            "total_records": total,
+            "showing": f"1-{sizes[0]}",
+            "data": records[:sizes[0]],
             "developer": DEV_CREDIT
         }
         fallback = "```json\n" + json.dumps(page_data, indent=4, ensure_ascii=False) + "\n```"
@@ -357,36 +376,36 @@ async def pagination_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     records = context.user_data.get("pg_records")
-    page_sizes = context.user_data.get("pg_sizes")
-    query_number = context.user_data.get("pg_query")
+    sizes = context.user_data.get("pg_sizes")
+    qnum = context.user_data.get("pg_query")
 
-    if not records or not page_sizes:
+    if not records or not sizes:
         await query.edit_message_text("⚠️ Session expired. Please send the number again.")
         return
 
-    total_pages = context.user_data.get("pg_total", len(page_sizes))
-    current_page = context.user_data.get("pg_page", 0)
+    total_pages = context.user_data.get("pg_total", len(sizes))
+    current = context.user_data.get("pg_page", 0)
 
     if data.startswith("pg_prev_"):
-        new_page = max(0, current_page - 1)
+        new_page = max(0, current - 1)
     elif data.startswith("pg_next_"):
-        new_page = min(total_pages - 1, current_page + 1)
+        new_page = min(total_pages - 1, current + 1)
     else:
         return
 
     context.user_data["pg_page"] = new_page
 
-    text = build_page_text(records, new_page, page_sizes, query_number)
-    keyboard = get_pagination_keyboard(new_page, total_pages)
+    text = build_pagination_text(records, new_page, sizes, qnum)
+    keyboard = pagination_keyboard(new_page, total_pages)
 
     try:
         await query.edit_message_text(text, parse_mode="Markdown", reply_markup=keyboard)
     except Exception as e:
-        print(f"Pagination error: {e}")
+        print(f"Pagination edit failed: {e}")
         try:
             await query.edit_message_text(text, reply_markup=keyboard)
         except Exception as e2:
-            print(f"Pagination fallback error: {e2}")
+            print(f"Pagination fallback failed: {e2}")
 
 
 # ---------- VERIFICATION ----------
@@ -490,62 +509,27 @@ def get_keyboard(user_id=None):
 
 # ---------- FORMAT FUNCTIONS ----------
 def format_number_output(data):
-    """Returns list of records, or dict for errors/no-data."""
     if not data:
-        return {
-            "status": "success",
-            "message": "No Data For This Number",
-            "query": "",
-            "data": None
-        }
-
+        return {"status": "success", "message": "No Data For This Number", "data": None}
     if "error" in data:
         err = data["error"]
         if err.lower() == "no data found":
-            return {
-                "status": "success",
-                "message": "No Data For This Number",
-                "query": "",
-                "data": None
-            }
-        return {
-            "status": "error",
-            "message": err,
-            "query": "",
-            "data": None
-        }
-
+            return {"status": "success", "message": "No Data For This Number", "data": None}
+        return {"status": "error", "message": err, "data": None}
     total = data.get("total_records", 0)
     results = data.get("data", [])
-
     if total == 0 or not results:
-        return {
-            "status": "success",
-            "message": "No Data For This Number",
-            "query": "",
-            "data": None
-        }
-
-    clean_results = []
-    for record in results:
-        clean_record = {}
-        for k, v in record.items():
-            if v is not None and v != "" and v != "N/A":
-                clean_record[k] = v
-        if "email" not in clean_record:
-            clean_record["email"] = record.get("email") or record.get("Email") or None
-        if clean_record:
-            clean_results.append(clean_record)
-
-    if not clean_results:
-        return {
-            "status": "success",
-            "message": "No Data For This Number",
-            "query": "",
-            "data": None
-        }
-
-    return clean_results
+        return {"status": "success", "message": "No Data For This Number", "data": None}
+    clean = []
+    for r in results:
+        cr = {k: v for k, v in r.items() if v is not None and v != "" and v != "N/A"}
+        if "email" not in cr:
+            cr["email"] = r.get("email") or r.get("Email") or None
+        if cr:
+            clean.append(cr)
+    if not clean:
+        return {"status": "success", "message": "No Data For This Number", "data": None}
+    return clean
 
 
 def format_aadhar_output(data):
@@ -655,6 +639,8 @@ async def perform_lookup(update, context, lookup_type, input_text):
             return
         user_data["coins"] -= COST_PER_LOOKUP
 
+    query_number = input_text
+
     if lookup_type == "number":
         digits = re.sub(r"\D", "", input_text)
         if len(digits) == 10:
@@ -666,47 +652,50 @@ async def perform_lookup(update, context, lookup_type, input_text):
             return
         url = API_NUMBER.format(digits)
         query_number = digits
-    elif lookup_type == "aadhar":
-        url = API_AADHAR.format(input_text); query_number = input_text
-    elif lookup_type == "tg_to_num":
-        url = API_TG_TO_NUM.format(input_text); query_number = input_text
-    elif lookup_type == "ifsc":
-        url = API_IFSC.format(input_text); query_number = input_text
-    elif lookup_type == "pincode":
-        url = API_PINCODE.format(input_text); query_number = input_text
-    elif lookup_type == "weather":
-        url = API_WEATHER.format(input_text); query_number = input_text
-    elif lookup_type == "email":
-        url = API_EMAIL.format(input_text); query_number = input_text
-    elif lookup_type == "ip":
-        url = API_IP.format(input_text); query_number = input_text
-    elif lookup_type == "pan":
-        url = API_PAN.format(input_text); query_number = input_text
+    elif lookup_type == "aadhar": url = API_AADHAR.format(input_text)
+    elif lookup_type == "tg_to_num": url = API_TG_TO_NUM.format(input_text)
+    elif lookup_type == "ifsc": url = API_IFSC.format(input_text)
+    elif lookup_type == "pincode": url = API_PINCODE.format(input_text)
+    elif lookup_type == "weather": url = API_WEATHER.format(input_text)
+    elif lookup_type == "email": url = API_EMAIL.format(input_text)
+    elif lookup_type == "ip": url = API_IP.format(input_text)
+    elif lookup_type == "pan": url = API_PAN.format(input_text)
     else:
         await update.message.reply_text("Unknown lookup.")
         return
 
-    try:
-        r = requests.get(url, timeout=90)
-        r.raise_for_status()
+    # ---------- Try API Call with Retries ----------
+    data = None
+    last_error = None
+    for attempt in range(3):
         try:
-            data = r.json()
-        except:
-            data = {"_raw": r.text}
-    except Exception as e:
-        print(f"Lookup error: {e}")
-        if lookup_type == "number":
-            text = build_no_data_response(query_number)
+            r = requests.get(url, timeout=90)
+            r.raise_for_status()
             try:
-                await update.message.reply_text(text, parse_mode="Markdown", reply_markup=get_keyboard(user_id))
-            except Exception:
-                await update.message.reply_text(text, reply_markup=get_keyboard(user_id))
+                data = r.json()
+                break
+            except json.JSONDecodeError:
+                data = {"_raw": r.text}
+                break
+        except Exception as e:
+            last_error = e
+            print(f"Attempt {attempt + 1} failed: {e}")
+            time.sleep(1)
+
+    if data is None:
+        # All attempts failed
+        if lookup_type == "number":
+            text = build_no_data(query_number)
+            await safe_send(update, text, reply_markup=get_keyboard(user_id))
         else:
-            await update.message.reply_text("❌ No results or service unavailable.")
+            await update.message.reply_text("❌ Service unavailable. Please try again.")
         return
 
+    # ---------- Format result ----------
     if lookup_type == "number":
         result = format_number_output(data)
+
+        # No data / error case
         if isinstance(result, dict):
             no_data = {
                 "status": result.get("status", "success"),
@@ -719,9 +708,11 @@ async def perform_lookup(update, context, lookup_type, input_text):
                 await update.message.reply_text(text, parse_mode="Markdown", reply_markup=get_keyboard(user_id))
             except Exception:
                 await update.message.reply_text(text, reply_markup=get_keyboard(user_id))
-            return
-        await send_paginated_number(update, context, result, query_number)
+        else:
+            # It's a list → send with pagination
+            await send_number_result(update, context, result, query_number)
     else:
+        # Other lookups
         if lookup_type == "aadhar": result = format_aadhar_output(data)
         elif lookup_type == "tg_to_num": result = format_tg_to_num_output(data)
         elif lookup_type == "ifsc": result = format_ifsc_output(data)
@@ -732,8 +723,9 @@ async def perform_lookup(update, context, lookup_type, input_text):
         elif lookup_type == "pan": result = format_pan_output(data)
         else: result = "Unknown"
 
-        await send_long_message(update, result, reply_markup=get_keyboard(user_id))
+        await safe_send(update, result, reply_markup=get_keyboard(user_id))
 
+    # Save history
     ts = datetime.now().isoformat()
     entry = f"{lookup_type.upper()}: {input_text} ({ts})"
     if len(user_data["history"]) >= HISTORY_LIMIT:
@@ -788,7 +780,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("Start error:", e)
 
 
-# ---------- VERIFY CALLBACK ----------
+# ---------- VERIFY ----------
 async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         query = update.callback_query
@@ -802,8 +794,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ok, missing = await check_verification(user_id, context)
         if ok:
             await query.edit_message_text(
-                "✅ Verification successful!\n\n"
-                "Now use /start to access the bot.",
+                "✅ Verification successful!\n\nNow use /start to access the bot.",
                 reply_markup=None
             )
         else:
