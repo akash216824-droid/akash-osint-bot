@@ -17,26 +17,25 @@ if not BOT_TOKEN:
 
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "8979291976").split(",")]
 
-# ---------- CHANNELS (सिर्फ 3 public channels) ----------
+# ---------- CHANNELS ----------
 CHANNELS = [
     {"name": "Channel 1", "username": "@wftis_ak4sh", "link": "https://t.me/wftis_ak4sh"},
     {"name": "Channel 2", "username": "@Err9r403", "link": "https://t.me/Err9r403"},
     {"name": "Channel 3", "username": "@AkashOSINT", "link": "https://t.me/AkashOSINT"},
 ]
 
-# ---------- GROUP (optional – button में दिखेगा, verify नहीं) ----------
 GROUP_LINK = "https://t.me/+oRfAbV_UhstmZDdh"
 
 # ---------- APIs ----------
 API_NUMBER = "https://akash-number-lookup.vercel.app/api/search?key=DEMO&query={}"
+API_AADHAR = "https://akash-adhar-lookup.vercel.app/info?key=DEMO&query={}"
+API_TG_TO_NUM = "https://akash-telegram-to-number.vercel.app/resolve?key=DEMO&query={}"
 API_IFSC = "https://vercei-kappa.vercel.app/ifsc?code={}"
 API_PINCODE = "https://nitin-apis-update-birthday-spacial.vercel.app/api?type=pincode&search={}"
 API_WEATHER = "https://nitin-wather-check-api.vercel.app/api?type=weather&search={}"
 API_EMAIL = "https://travelers-creature-sarah-rogers.trycloudflare.com/search?q={}"
-API_AADHAR = "https://adityaxapi-jrys.onrender.com/api/aadhar?key=BIRTHDAY&num={}"
 API_IP = "https://talks-chain-restrictions-statistics.trycloudflare.com/search?query={}"
-API_PAN = "https://adityaxapi-jrys.onrender.com/api/pan?key=BIRTHDAY&pan={}"
-API_TG_TO_NUM = "https://akash-telegram-to-number.vercel.app/resolve?key=DEMO&query={}"
+API_PAN = "https://counted-developing-parade-man.trycloudflare.com/pan-info?pan={}"
 
 COINS_ON_START = 5
 COST_PER_LOOKUP = 1
@@ -172,27 +171,15 @@ def auto_cleaner():
         time.sleep(600)
 
 
-# ---------- VERIFICATION (सिर्फ 3 public channels) ----------
+# ---------- VERIFICATION ----------
 async def check_verification(user_id, context):
-    """3 public channels check. Bot उन channels में admin होना चाहिए."""
     for ch in CHANNELS:
         try:
-            member = await context.bot.get_chat_member(
-                chat_id=ch["username"], user_id=user_id
-            )
-            status = getattr(member, "status", None)
-            if status not in ["member", "administrator", "creator"]:
+            member = await context.bot.get_chat_member(chat_id=ch["username"], user_id=user_id)
+            if member.status not in ["member", "administrator", "creator"]:
                 return False, ch["name"]
         except Exception as e:
-            err = str(e).lower()
             print(f"Verify error for {ch['username']}: {e}")
-            # अगर bot channel में नहीं है या admin नहीं है – skip नहीं करें, false दें
-            if "chat not found" in err or "not enough rights" in err or "bot is not a member" in err:
-                return False, f"{ch['name']} (Bot not admin)"
-            # user channel में नहीं है
-            if "user not found" in err or "participant" in err:
-                return False, ch["name"]
-            # बाकी errors – safe तरीके से false दें
             return False, ch["name"]
     return True, None
 
@@ -203,7 +190,6 @@ async def is_verified(user_id, context):
         return False
     ok, _ = await check_verification(user_id, context)
     return ok
-
 
 def get_verify_keyboard():
     kb = [
@@ -284,7 +270,7 @@ def get_keyboard(user_id=None):
     return get_user_keyboard()
 
 
-# ---------- FORMAT ----------
+# ---------- FORMAT FUNCTIONS ----------
 def format_number_output(data):
     if not data:
         return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
@@ -301,7 +287,7 @@ def format_number_output(data):
     if total == 0 or not results:
         return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙪𝙣𝙙"
 
-    # NO LIMIT – जितने records हैं सब include करें
+    # NO LIMIT – show all records
     clean_results = []
     for record in results:
         clean_record = {}
@@ -322,80 +308,19 @@ def format_number_output(data):
         "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
     }
     return "**Number Lookup**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
+
+
 def format_aadhar_output(data):
-    if not data:
-        return "❌ No data found."
-
-    if "error" in data:
-        return f"❌ {data['error']}"
-
-    # New API structure
-    count = data.get("count", 0)
+    if not data: return "❌ No data found."
+    if "error" in data: return f"❌ {data['error']}"
+    total = data.get("total_records", 0)
     results = data.get("data", [])
-
-    if count == 0 or not results:
+    if total == 0 or not results:
         return "❌ No data found for this Aadhar."
+    clean_data = {"total_records": len(results), "data": results, "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"}
+    return "**Aadhar Lookup**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
 
-    # Clean records – सिर्फ जरूरी fields
-    clean_results = []
-    for record in results:
-        name = record.get("name")
-        phone = record.get("phoneNumber")
-        other = record.get("otherNumber")
-        address = record.get("address")
-        father = record.get("fathersName")
-        aadhar = record.get("aadharNumber")
 
-        # Skip अगर name खाली है और phone भी नहीं
-        if not name and not phone:
-            continue
-
-        clean_record = {}
-        if name:
-            clean_record["name"] = name
-        if father:
-            clean_record["fathersName"] = father
-        if phone:
-            # Format with +91
-            digits = re.sub(r"\D", "", str(phone))
-            if len(digits) == 10:
-                clean_record["phoneNumber"] = "+91" + digits
-            elif digits.startswith("91") and len(digits) == 12:
-                clean_record["phoneNumber"] = "+" + digits
-            else:
-                clean_record["phoneNumber"] = "+" + digits
-
-        if other:
-            o_digits = re.sub(r"\D", "", str(other))
-            if len(o_digits) == 10:
-                clean_record["otherNumber"] = "+91" + o_digits
-            elif o_digits.startswith("91") and len(o_digits) == 12:
-                clean_record["otherNumber"] = "+" + o_digits
-            else:
-                clean_record["otherNumber"] = "+" + o_digits
-
-        if address:
-            clean_record["address"] = address.strip()
-        if aadhar:
-            clean_record["aadharNumber"] = aadhar
-        clean_record["source"] = "inddata"
-
-        if clean_record:
-            clean_results.append(clean_record)
-
-    if not clean_results:
-        return "❌ No data found for this Aadhar."
-
-    clean_data = {
-        "total_records": len(clean_results),
-        "data": clean_results,
-        "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
-    }
-
-    out = "**Aadhar Lookup**\n```json\n"
-    out += json.dumps(clean_data, indent=4, ensure_ascii=False)
-    out += "\n```"
-    return out
 def format_tg_to_num_output(data):
     if not data: return "❌ No data found."
     if "error" in data: return f"❌ {data['error']}"
@@ -406,6 +331,7 @@ def format_tg_to_num_output(data):
                   "Country Code": cc or "N/A", "developer": "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"}
     return "**TG to Num**\n```json\n" + json.dumps(clean_data, indent=4, ensure_ascii=False) + "\n```"
 
+
 def format_ifsc_output(data):
     if not data: return "❌ No data found."
     if "success" in data and data["success"] == False: return "❌ Invalid IFSC."
@@ -414,6 +340,7 @@ def format_ifsc_output(data):
     if not clean: return "❌ No data found."
     clean["developer"] = "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
     return "**IFSC**\n```json\n" + json.dumps(clean, indent=4, ensure_ascii=False) + "\n```"
+
 
 def format_pincode_output(data):
     if not data or data.get("status") != "success":
@@ -429,6 +356,7 @@ def format_pincode_output(data):
     }
     return "**PIN Code**\n```json\n" + json.dumps(clean, indent=4, ensure_ascii=False) + "\n```"
 
+
 def format_weather_output(data):
     if not data or not data.get("success") or not data.get("data"):
         return "❌ No weather data."
@@ -443,15 +371,18 @@ def format_weather_output(data):
     }
     return "**Weather**\n```json\n" + json.dumps(clean, indent=4, ensure_ascii=False) + "\n```"
 
+
 def format_email_output(data):
     if not data: return "❌ No data found."
     results = data.get("results") or data.get("data") or []
     if not results: return "❌ No data found."
     return "**Email**\n```json\n" + json.dumps(results, indent=4, ensure_ascii=False) + "\n```"
 
+
 def format_ip_output(data):
     if not data: return "❌ No data found."
     return "**IP**\n```json\n" + json.dumps(data, indent=4, ensure_ascii=False) + "\n```"
+
 
 def format_pan_output(data):
     if not data: return "❌ No data found."
@@ -493,7 +424,7 @@ async def perform_lookup(update, context, lookup_type, input_text):
         elif len(digits) == 12 and digits.startswith("91"):
             pass
         else:
-            await update.message.reply_text("❌ Invalid number.")
+            await update.message.reply_text("❌ Invalid number. Please send 10-digit Indian mobile number.")
             return
         url = API_NUMBER.format(digits)
     elif lookup_type == "aadhar": url = API_AADHAR.format(input_text)
@@ -511,9 +442,12 @@ async def perform_lookup(update, context, lookup_type, input_text):
     try:
         r = requests.get(url, timeout=25)
         r.raise_for_status()
-        try: data = r.json()
-        except: data = {"_raw": r.text}
-    except Exception:
+        try:
+            data = r.json()
+        except:
+            data = {"_raw": r.text}
+    except Exception as e:
+        print(f"Lookup error: {e}")
         await update.message.reply_text("❌ No results or service unavailable.")
         return
 
@@ -1008,7 +942,6 @@ def main():
         .build()
     )
 
-    # Delete webhook first (important – ensures no conflict)
     try:
         import asyncio
         loop = asyncio.new_event_loop()
@@ -1074,4 +1007,3 @@ async def setphone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 if __name__ == "__main__":
     main()
-# trigger rebuild
