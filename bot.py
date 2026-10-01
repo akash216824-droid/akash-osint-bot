@@ -507,31 +507,41 @@ def get_keyboard(user_id=None):
     return get_user_keyboard()
 
 
-# ---------- FORMAT FUNCTIONS ----------
+# ---------- FORMAT FUNCTIONS ---------
 def format_number_output(data):
+    """Returns list of records OR dict for no-data/error."""
     if not data:
         return {"status": "success", "message": "No Data For This Number", "data": None}
+
     if "error" in data:
         err = data["error"]
         if err.lower() == "no data found":
             return {"status": "success", "message": "No Data For This Number", "data": None}
         return {"status": "error", "message": err, "data": None}
+
     total = data.get("total_records", 0)
     results = data.get("data", [])
+
+    # IMPORTANT: no data if empty OR no valid mobile field
     if total == 0 or not results:
         return {"status": "success", "message": "No Data For This Number", "data": None}
+
     clean = []
     for r in results:
+        # Skip records where mobile is missing or has masked chars
+        mobile = r.get("mobile", "")
+        if not mobile or "***" in mobile or len(re.sub(r"\D", "", mobile)) < 10:
+            continue
         cr = {k: v for k, v in r.items() if v is not None and v != "" and v != "N/A"}
         if "email" not in cr:
             cr["email"] = r.get("email") or r.get("Email") or None
         if cr:
             clean.append(cr)
+
     if not clean:
         return {"status": "success", "message": "No Data For This Number", "data": None}
+
     return clean
-
-
 def format_aadhar_output(data):
     if not data: return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝘼𝙙𝙝𝙖𝙖𝙧"
     if "error" in data: return f"❌ {data['error']}"
