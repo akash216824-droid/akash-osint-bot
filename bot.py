@@ -18,7 +18,6 @@ if not BOT_TOKEN:
 
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "8979291976").split(",")]
 
-# ---------- CHANNELS ----------
 CHANNELS = [
     {"name": "Channel 1", "username": "@wftis_ak4sh", "link": "https://t.me/wftis_ak4sh"},
     {"name": "Channel 2", "username": "@Err9r403", "link": "https://t.me/Err9r403"},
@@ -52,7 +51,7 @@ MAX_LOG_ENTRIES = 200
 ADMIN_USERNAME = "@AK4SX"
 
 TELEGRAM_MAX_LEN = 4000
-PAGINATION_THRESHOLD = 10   # ≤10 = single page, >10 = pagination
+PAGINATION_THRESHOLD = 10
 
 DEV_CREDIT = "𐙚 𓆩𝘼𝙠𝙖𝙨𝗵 𝙊𝙨𝙞𝙣𝙩𓆪𓂃🧑💻🎀⃤"
 
@@ -128,7 +127,7 @@ def update_user_data(uid, nd):
     save_data(data)
 
 
-# ---------- AUTO-DELETE 24h ----------
+# ---------- AUTO-DELETE ----------
 def clean_old_history():
     data = load_data()
     cutoff = datetime.now() - timedelta(hours=HISTORY_TTL_HOURS)
@@ -179,6 +178,7 @@ def auto_cleaner():
 
 # ---------- SEND LONG MESSAGE ----------
 async def send_long_message(update, text, reply_markup=None):
+    """Split long messages into chunks (safe for Telegram 4096 limit)."""
     if len(text) <= TELEGRAM_MAX_LEN:
         try:
             await update.message.reply_text(text, parse_mode="Markdown", reply_markup=reply_markup)
@@ -214,61 +214,24 @@ async def send_long_message(update, text, reply_markup=None):
         time.sleep(0.3)
 
 
-# ---------- DYNAMIC PAGINATION HELPERS ----------
+# ---------- PAGINATION ----------
 def calculate_page_distribution(total_records):
-    """
-    Given total records, return list of page sizes (even distribution).
-
-    Rules:
-    - ≤10: single page (no pagination)
-    - >10: minimum 2 pages, roughly equal sizes
-    """
+    """Return page sizes – even distribution if >10."""
     if total_records <= PAGINATION_THRESHOLD:
-        return [total_records]  # single page
-
-    # Determine number of pages: at least 2, target ~10 records per page
+        return [total_records]
     num_pages = max(2, math.ceil(total_records / 10))
-
-    # Even distribution
     base = total_records // num_pages
     remainder = total_records % num_pages
-
-    # First 'remainder' pages get +1
-    page_sizes = [base + 1] * remainder + [base] * (num_pages - remainder)
-
-    return page_sizes
-
-
-def build_page_header(page, total_pages, showing_from, showing_to, total_records):
-    """Build a clean header for the page."""
-    header = (
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        f"📄 **PAGE {page + 1} / {total_pages}**\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-    )
-    return header
-
-
-def build_page_footer(page, total_pages, showing_from, showing_to, total_records):
-    """Build a clean footer for the page."""
-    footer = (
-        "\n━━━━━━━━━━━━━━━━━━━━\n"
-        f"📊 Showing {showing_from}–{showing_to} of {total_records}\n"
-        "━━━━━━━━━━━━━━━━━━━━"
-    )
-    return footer
+    return [base + 1] * remainder + [base] * (num_pages - remainder)
 
 
 def build_page_text(records, page, page_sizes, query_number):
     """Build JSON text for a single page."""
     total_pages = len(page_sizes)
-
-    # Compute start index for this page
     start = sum(page_sizes[:page])
     end = start + page_sizes[page]
     page_records = records[start:end]
 
-    # Header with page info
     header = (
         "━━━━━━━━━━━━━━━━━━━━\n"
         f"📄 **PAGE {page + 1} / {total_pages}**\n"
@@ -294,13 +257,13 @@ def build_page_text(records, page, page_sizes, query_number):
         f"📊 Showing {start + 1}–{end} of {len(records)}\n"
         "━━━━━━━━━━━━━━━━━━━━"
     )
-
     return header + json_part + footer
 
 
 def build_single_page_text(records, query_number):
-    """Build single page JSON (no pagination)."""
+    """Single page JSON (no pagination)."""
     clean_data = {
+        "status": "success",
         "total_records": len(records),
         "number": query_number,
         "data": records,
@@ -310,52 +273,52 @@ def build_single_page_text(records, query_number):
 
 
 def get_pagination_keyboard(page, total_pages):
-    """Build navigation keyboard. Hide Prev on first, Next on last."""
     row = []
-
     if page > 0:
         row.append(InlineKeyboardButton("◀️ Previous", callback_data=f"pg_prev_{page}"))
     else:
         row.append(InlineKeyboardButton("◀️ Previous", callback_data="pg_noop"))
-
     row.append(InlineKeyboardButton(f"{page + 1} / {total_pages}", callback_data="pg_noop"))
-
     if page < total_pages - 1:
         row.append(InlineKeyboardButton("Next ▶️", callback_data=f"pg_next_{page}"))
     else:
         row.append(InlineKeyboardButton("Next ▶️", callback_data="pg_noop"))
-
     return InlineKeyboardMarkup([row])
 
 
+def build_no_data_response(query_number):
+    """Build the no-data JSON response."""
+    no_data = {
+        "status": "success",
+        "message": "No Data For This Number",
+        "query": query_number,
+        "data": None
+    }
+    return "```json\n" + json.dumps(no_data, indent=2, ensure_ascii=False) + "\n```"
+
+
 async def send_paginated_number(update, context, records, query_number):
-    """
-    Send Number Lookup records.
-    - If ≤10: single page, no buttons.
-    - If >10: paginated with even distribution.
-    """
+    """Send records – single page if ≤10, paginated if >10."""
     total_records = len(records)
 
     if total_records == 0:
-        await update.message.reply_text(
-            "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
-        )
-        return
-
-    # ≤ 10 → single page, no pagination
-    if total_records <= PAGINATION_THRESHOLD:
-        text = build_single_page_text(records, query_number)
+        text = build_no_data_response(query_number)
         try:
             await update.message.reply_text(text, parse_mode="Markdown")
         except Exception:
             await update.message.reply_text(text)
         return
 
+    # ≤ 10 → single message
+    if total_records <= PAGINATION_THRESHOLD:
+        text = build_single_page_text(records, query_number)
+        await send_long_message(update, text, reply_markup=get_keyboard(update.effective_user.id))
+        return
+
     # > 10 → paginated
     page_sizes = calculate_page_distribution(total_records)
     total_pages = len(page_sizes)
 
-    # Store per-user pagination state
     context.user_data["pg_records"] = records
     context.user_data["pg_sizes"] = page_sizes
     context.user_data["pg_total"] = total_pages
@@ -364,11 +327,28 @@ async def send_paginated_number(update, context, records, query_number):
 
     text = build_page_text(records, 0, page_sizes, query_number)
     keyboard = get_pagination_keyboard(0, total_pages)
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+
+    try:
+        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    except Exception as e:
+        print(f"Paginated send error: {e}")
+        # Fallback: JSON only
+        page_data = {
+            "page": 1,
+            "total_pages": total_pages,
+            "total_records": total_records,
+            "showing": f"1-{page_sizes[0]}",
+            "data": records[:page_sizes[0]],
+            "developer": DEV_CREDIT
+        }
+        fallback = "```json\n" + json.dumps(page_data, indent=4, ensure_ascii=False) + "\n```"
+        try:
+            await update.message.reply_text(fallback, parse_mode="Markdown", reply_markup=keyboard)
+        except Exception:
+            await update.message.reply_text(fallback, reply_markup=keyboard)
 
 
 async def pagination_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle Prev/Next navigation. Uses cached records, no API call."""
     query = update.callback_query
     await query.answer()
 
@@ -402,7 +382,11 @@ async def pagination_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         await query.edit_message_text(text, parse_mode="Markdown", reply_markup=keyboard)
     except Exception as e:
-        print(f"Pagination edit error: {e}")
+        print(f"Pagination error: {e}")
+        try:
+            await query.edit_message_text(text, reply_markup=keyboard)
+        except Exception as e2:
+            print(f"Pagination fallback error: {e2}")
 
 
 # ---------- VERIFICATION ----------
@@ -506,21 +490,41 @@ def get_keyboard(user_id=None):
 
 # ---------- FORMAT FUNCTIONS ----------
 def format_number_output(data):
-    """Returns list of records for pagination, or string for errors."""
+    """Returns list of records, or dict for errors/no-data."""
     if not data:
-        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
+        return {
+            "status": "success",
+            "message": "No Data For This Number",
+            "query": "",
+            "data": None
+        }
 
     if "error" in data:
         err = data["error"]
         if err.lower() == "no data found":
-            return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
-        return f"❌ {err}"
+            return {
+                "status": "success",
+                "message": "No Data For This Number",
+                "query": "",
+                "data": None
+            }
+        return {
+            "status": "error",
+            "message": err,
+            "query": "",
+            "data": None
+        }
 
     total = data.get("total_records", 0)
     results = data.get("data", [])
 
     if total == 0 or not results:
-        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
+        return {
+            "status": "success",
+            "message": "No Data For This Number",
+            "query": "",
+            "data": None
+        }
 
     clean_results = []
     for record in results:
@@ -534,7 +538,12 @@ def format_number_output(data):
             clean_results.append(clean_record)
 
     if not clean_results:
-        return "🔎 𝙉𝙤 𝘿𝙖𝙩𝙖 𝙁𝙤𝙧 𝙏𝙝𝙞𝙨 𝙉𝙪𝙢𝙗𝙚𝙧"
+        return {
+            "status": "success",
+            "message": "No Data For This Number",
+            "query": "",
+            "data": None
+        }
 
     return clean_results
 
@@ -658,35 +667,27 @@ async def perform_lookup(update, context, lookup_type, input_text):
         url = API_NUMBER.format(digits)
         query_number = digits
     elif lookup_type == "aadhar":
-        url = API_AADHAR.format(input_text)
-        query_number = input_text
+        url = API_AADHAR.format(input_text); query_number = input_text
     elif lookup_type == "tg_to_num":
-        url = API_TG_TO_NUM.format(input_text)
-        query_number = input_text
+        url = API_TG_TO_NUM.format(input_text); query_number = input_text
     elif lookup_type == "ifsc":
-        url = API_IFSC.format(input_text)
-        query_number = input_text
+        url = API_IFSC.format(input_text); query_number = input_text
     elif lookup_type == "pincode":
-        url = API_PINCODE.format(input_text)
-        query_number = input_text
+        url = API_PINCODE.format(input_text); query_number = input_text
     elif lookup_type == "weather":
-        url = API_WEATHER.format(input_text)
-        query_number = input_text
+        url = API_WEATHER.format(input_text); query_number = input_text
     elif lookup_type == "email":
-        url = API_EMAIL.format(input_text)
-        query_number = input_text
+        url = API_EMAIL.format(input_text); query_number = input_text
     elif lookup_type == "ip":
-        url = API_IP.format(input_text)
-        query_number = input_text
+        url = API_IP.format(input_text); query_number = input_text
     elif lookup_type == "pan":
-        url = API_PAN.format(input_text)
-        query_number = input_text
+        url = API_PAN.format(input_text); query_number = input_text
     else:
         await update.message.reply_text("Unknown lookup.")
         return
 
     try:
-        r = requests.get(url, timeout=60)
+        r = requests.get(url, timeout=90)
         r.raise_for_status()
         try:
             data = r.json()
@@ -694,14 +695,30 @@ async def perform_lookup(update, context, lookup_type, input_text):
             data = {"_raw": r.text}
     except Exception as e:
         print(f"Lookup error: {e}")
-        await update.message.reply_text("❌ No results or service unavailable.")
+        if lookup_type == "number":
+            text = build_no_data_response(query_number)
+            try:
+                await update.message.reply_text(text, parse_mode="Markdown", reply_markup=get_keyboard(user_id))
+            except Exception:
+                await update.message.reply_text(text, reply_markup=get_keyboard(user_id))
+        else:
+            await update.message.reply_text("❌ No results or service unavailable.")
         return
 
-    # Handle Number Lookup with dynamic pagination
     if lookup_type == "number":
         result = format_number_output(data)
-        if isinstance(result, str):
-            await update.message.reply_text(result, reply_markup=get_keyboard(user_id))
+        if isinstance(result, dict):
+            no_data = {
+                "status": result.get("status", "success"),
+                "message": result.get("message", "No Data For This Number"),
+                "query": query_number,
+                "data": None
+            }
+            text = "```json\n" + json.dumps(no_data, indent=2, ensure_ascii=False) + "\n```"
+            try:
+                await update.message.reply_text(text, parse_mode="Markdown", reply_markup=get_keyboard(user_id))
+            except Exception:
+                await update.message.reply_text(text, reply_markup=get_keyboard(user_id))
             return
         await send_paginated_number(update, context, result, query_number)
     else:
@@ -1190,8 +1207,8 @@ def main():
     application = (
         Application.builder()
         .token(BOT_TOKEN)
-        .read_timeout(30).write_timeout(30)
-        .connect_timeout(30).pool_timeout(30)
+        .read_timeout(60).write_timeout(60)
+        .connect_timeout(60).pool_timeout(60)
         .build()
     )
 
@@ -1226,7 +1243,7 @@ def main():
 
     application.run_polling(
         poll_interval=1.0,
-        timeout=30,
+        timeout=60,
         drop_pending_updates=True
     )
 
