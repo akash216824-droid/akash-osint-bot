@@ -40,7 +40,7 @@ ADMIN_ID = 8979291976
 ADMIN_USERNAME = "@AK4SX"
 DEVELOPER = "ᴀᴋᴀꜱʜ ᴏꜱɪɴᴛ"
 
-# ---------- Channels to join ----------
+# ---------- Channels ----------
 CHANNELS = [
     {"name": "Channel 1", "username": "@AK4SHOSINT", "link": "https://t.me/AK4SHOSINT"},
     {"name": "Channel 2", "username": "@Ak4sHoSiNtt", "link": "https://t.me/Ak4sHoSiNtt"},
@@ -69,7 +69,7 @@ APPROVED_GROUPS_FILE = "approved_groups.json"
 
 
 # ============================================================
-# FLASK HEALTH SERVER FOR RENDER
+# FLASK HEALTH SERVER
 # ============================================================
 
 health_app = Flask(__name__)
@@ -87,12 +87,7 @@ def health():
 
 def run_health_server():
     port = int(os.getenv("PORT", "10000"))
-    health_app.run(
-        host="0.0.0.0",
-        port=port,
-        debug=False,
-        use_reloader=False,
-    )
+    health_app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
 # ============================================================
@@ -180,40 +175,40 @@ def is_verified(user_id):
 
 
 # ============================================================
-# MAIN KEYBOARD
+# MAIN KEYBOARD (with colour styles)
 # ============================================================
 
 def main_keyboard(user_id):
     rows = [
         [
-            KeyboardButton("📱 Number Lookup"),
-            KeyboardButton("🔢 TG to Num"),
+            KeyboardButton("📱 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ", style="primary"),
+            KeyboardButton("🔢 ᴛɢ ᴛᴏ ɴᴜᴍ", style="primary"),
         ],
         [
-            KeyboardButton("🪪 Aadhar"),
-            KeyboardButton("💳 Pan"),
+            KeyboardButton("🪪 ᴀᴀᴅʜᴀʀ", style="primary"),
+            KeyboardButton("💳 ᴘᴀɴ", style="primary"),
         ],
         [
-            KeyboardButton("🏦 IFSC"),
-            KeyboardButton("📍 Pin Code"),
+            KeyboardButton("🏦 ɪꜰꜱᴄ", style="primary"),
+            KeyboardButton("📍 ᴘɪɴ ᴄᴏᴅᴇ", style="primary"),
         ],
         [
-            KeyboardButton("🌐 IP"),
-            KeyboardButton("📧 Email"),
+            KeyboardButton("🌐 ɪᴘ", style="primary"),
+            KeyboardButton("📧 ᴇᴍᴀɪʟ", style="primary"),
         ],
         [
-            KeyboardButton("☁️ Weather"),
-            KeyboardButton("👤 My Contact"),
+            KeyboardButton("☁️ ᴡᴇᴀᴛʜᴇʀ", style="primary"),
+            KeyboardButton("👤 ᴍʏ ᴄᴏɴᴛᴀᴄᴛ", style="primary"),
         ],
         [
-            KeyboardButton("❓ Help"),
+            KeyboardButton("❓ ʜᴇʟᴘ", style="success"),
         ],
     ]
 
     if user_id == ADMIN_ID:
         rows.append(
             [
-                KeyboardButton("⚙️ Bot Management"),
+                KeyboardButton("⚙️ ʙᴏᴛ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ", style="danger"),
             ]
         )
 
@@ -232,8 +227,9 @@ def contact_keyboard():
     keyboard = [
         [
             KeyboardButton(
-                "📱 Share My Contact",
+                "📱 ꜱʜᴀʀᴇ ᴍʏ ᴄᴏɴᴛᴀᴄᴛ",
                 request_contact=True,
+                style="success",
             )
         ]
     ]
@@ -253,10 +249,22 @@ def channel_join_keyboard():
     rows = []
     for ch in CHANNELS:
         rows.append(
-            [InlineKeyboardButton(f"📢 Join {ch['name']}", url=ch["link"])]
+            [
+                InlineKeyboardButton(
+                    f"📢 ᴊᴏɪɴ {ch['name']}",
+                    url=ch["link"],
+                    style="primary",
+                )
+            ]
         )
     rows.append(
-        [InlineKeyboardButton("✅ I Have Joined", callback_data="check_joined")]
+        [
+            InlineKeyboardButton(
+                "✅ ɪ ʜᴀᴠᴇ ᴊᴏɪɴᴇᴅ",
+                callback_data="check_joined",
+                style="success",
+            )
+        ]
     )
     return InlineKeyboardMarkup(rows)
 
@@ -295,25 +303,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not member:
         await update.message.reply_text(
-            "🔐 Please join all channels to use this bot.\n\n"
-            "After joining, press ✅ I Have Joined.",
+            "🔐 ᴘʟᴇᴀꜱᴇ ᴊᴏɪɴ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ ᴛᴏ ᴜꜱᴇ ᴛʜɪꜱ ʙᴏᴛ.\n\n"
+            "ᴀꜰᴛᴇʀ ᴊᴏɪɴɪɴɢ, ᴘʀᴇꜱꜱ ✅ ɪ ʜᴀᴠᴇ ᴊᴏɪɴᴇᴅ.",
             reply_markup=channel_join_keyboard(),
         )
         return
 
     if not is_verified(user.id):
         await update.message.reply_text(
-            "🔐 Verification required.\n\n"
-            "Please share your own Telegram contact using the button below.",
+            "🔐 ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇQᴜɪʀᴇᴅ.\n\n"
+            "ᴘʟᴇᴀꜱᴇ ꜱʜᴀʀᴇ ʏᴏᴜʀ ᴏᴡɴ ᴛᴇʟᴇɢʀᴀᴍ ᴄᴏɴᴛᴀᴄᴛ ᴜꜱɪɴɢ ᴛʜᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ.",
             reply_markup=contact_keyboard(),
         )
         return
 
     await update.message.reply_text(
-        f"👋 Welcome to AKASH OSINT Bot.\n\n"
-        f"👤 User ID: {user.id}\n"
-        f"✅ You are verified!\n\n"
-        f"Choose an option from the menu below.",
+        f"👋 ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴀᴋᴀꜱʜ ᴏꜱɪɴᴛ ʙᴏᴛ.\n\n"
+        f"👤 ᴜꜱᴇʀ ɪᴅ: {user.id}\n"
+        f"✅ ʏᴏᴜ ᴀʀᴇ ᴠᴇʀɪꜰɪᴇᴅ!\n\n"
+        f"ᴄʜᴏᴏꜱᴇ ᴀɴ ᴏᴘᴛɪᴏɴ ꜰʀᴏᴍ ᴛʜᴇ ᴍᴇɴᴜ ʙᴇʟᴏᴡ.",
         reply_markup=main_keyboard(user.id),
     )
 
@@ -331,22 +339,20 @@ async def check_joined_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     if not member:
         await query.edit_message_text(
-            "❌ You haven't joined all channels yet.\n\n"
-            "Please join all and press ✅ I Have Joined again.",
+            "❌ ʏᴏᴜ ʜᴀᴠᴇɴ'ᴛ ᴊᴏɪɴᴇᴅ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ ʏᴇᴛ.\n\n"
+            "ᴘʟᴇᴀꜱᴇ ᴊᴏɪɴ ᴀʟʟ ᴀɴᴅ ᴘʀᴇꜱꜱ ✅ ɪ ʜᴀᴠᴇ ᴊᴏɪɴᴇᴅ ᴀɢᴀɪɴ.",
             reply_markup=channel_join_keyboard(),
         )
         return
 
     if not is_verified(user.id):
         await query.edit_message_text(
-            "✅ Channels verified!\n\n"
-            "Now please share your contact using /start",
+            "✅ ᴄʜᴀɴɴᴇʟꜱ ᴠᴇʀɪꜰɪᴇᴅ!\n\n"
+            "ɴᴏᴡ ᴘʟᴇᴀꜱᴇ ꜱʜᴀʀᴇ ʏᴏᴜʀ ᴄᴏɴᴛᴀᴄᴛ ᴜꜱɪɴɢ /start",
         )
         return
 
-    await query.edit_message_text(
-        "✅ All verified! Use /start to access the bot."
-    )
+    await query.edit_message_text("✅ ᴀʟʟ ᴠᴇʀɪꜰɪᴇᴅ! ᴜꜱᴇ /start ᴛᴏ ᴀᴄᴄᴇꜱꜱ ᴛʜᴇ ʙᴏᴛ.")
 
 
 # ============================================================
@@ -364,7 +370,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if contact.user_id != user.id:
         await message.reply_text(
-            "❌ Please share your own Telegram contact.",
+            "❌ ᴘʟᴇᴀꜱᴇ ꜱʜᴀʀᴇ ʏᴏᴜʀ ᴏᴡɴ ᴛᴇʟᴇɢʀᴀᴍ ᴄᴏɴᴛᴀᴄᴛ.",
             reply_markup=contact_keyboard(),
         )
         return
@@ -380,8 +386,8 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_verified(verified)
 
     await message.reply_text(
-        "✅ Verification successful!\n\n"
-        "You can now use the bot.",
+        "✅ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟ!\n\n"
+        "ʏᴏᴜ ᴄᴀɴ ɴᴏᴡ ᴜꜱᴇ ᴛʜᴇ ʙᴏᴛ.",
         reply_markup=main_keyboard(user.id),
     )
 
@@ -395,8 +401,7 @@ async def show_help(update: Update):
         "𝑵𝒆𝒆𝒅 𝒂𝒔𝒔𝒊𝒔𝒕𝒂𝒏𝒄𝒆?\n\n"
         "𝑭𝒐𝒓 𝒔𝒖𝒑𝒑𝒐𝒓𝒕, 𝒊𝒔𝒔𝒖𝒆𝒔 𝒐𝒓 𝒈𝒆𝒏𝒆𝒓𝒂𝒍 "
         "𝒊𝒏𝒒𝒖𝒊𝒓𝒊𝒆𝒔, 𝒑𝒍𝒆𝒂𝒔𝒆 𝒄𝒐𝒏𝒕𝒂𝒄𝒕 𝒕𝒉𝒆 𝒂𝒅𝒎𝒊𝒏.\n\n"
-        f"👨‍💻 𝑨𝒅𝒎𝒊𝒏 ~ {ADMIN_USERNAME}\n"
-        f"🛠️ ᴅᴇᴠᴇʟᴏᴘᴇʀ: {DEVELOPER} • 🛰️"
+        f"👨‍💻 𝑨𝒅𝒎𝒊𝒏 ~ {ADMIN_USERNAME}"
     )
 
 
@@ -411,7 +416,7 @@ async def show_my_contact(update: Update):
 
     if not record:
         await update.message.reply_text(
-            "❌ You are not verified yet.",
+            "❌ ʏᴏᴜ ᴀʀᴇ ɴᴏᴛ ᴠᴇʀɪꜰɪᴇᴅ ʏᴇᴛ.",
             reply_markup=contact_keyboard(),
         )
         return
@@ -551,7 +556,7 @@ def format_single_record(record, index, total):
 
 
 # ============================================================
-# BUILD PAGINATION PAGE
+# BUILD PAGE
 # ============================================================
 
 def build_page(records, number, page):
@@ -592,16 +597,28 @@ def pagination_keyboard(number, page, total):
 
     if page > 0:
         buttons.append(
-            InlineKeyboardButton("◀️ Previous", callback_data=f"lookup:{number}:{page - 1}")
+            InlineKeyboardButton(
+                "◀️ ᴘʀᴇᴠɪᴏᴜꜱ",
+                callback_data=f"lookup:{number}:{page - 1}",
+                style="primary",
+            )
         )
 
     buttons.append(
-        InlineKeyboardButton(f"📄 {page + 1}/{total_pages}", callback_data="lookup:page")
+        InlineKeyboardButton(
+            f"📄 {page + 1}/{total_pages}",
+            callback_data="lookup:page",
+            style="success",
+        )
     )
 
     if page < total_pages - 1:
         buttons.append(
-            InlineKeyboardButton("Next ▶️", callback_data=f"lookup:{number}:{page + 1}")
+            InlineKeyboardButton(
+                "ɴᴇxᴛ ▶️",
+                callback_data=f"lookup:{number}:{page + 1}",
+                style="primary",
+            )
         )
 
     return InlineKeyboardMarkup([buttons])
@@ -635,19 +652,20 @@ async def process_number(update, context, number):
 
     if not clean.isdigit() or len(clean) != 10:
         await update.message.reply_text(
-            "❌ Please send a valid 10-digit mobile number.\n\nExample:\n9876543210"
+            "❌ ᴘʟᴇᴀꜱᴇ ꜱᴇɴᴅ ᴀ ᴠᴀʟɪᴅ 10-ᴅɪɢɪᴛ ᴍᴏʙɪʟᴇ ɴᴜᴍʙᴇʀ.\n\n"
+            "ᴇxᴀᴍᴘʟᴇ:\n9876543210"
         )
         return
 
     save_query(user, clean, "number")
 
-    searching = await update.message.reply_text("🔎 Searching authorized/test records...")
+    searching = await update.message.reply_text("🔎 ꜱᴇᴀʀᴄʜɪɴɢ...")
 
     params = {"key": API_KEY, "query": clean}
     data, error = await call_api(API_NUMBER, params)
 
     if error:
-        await searching.edit_text(f"❌ API Error: {error}\n\nPlease try again later.")
+        await searching.edit_text(f"❌ ᴀᴘɪ ᴇʀʀᴏʀ: {error}\n\nᴘʟᴇᴀꜱᴇ ᴛʀʏ ᴀɢᴀɪɴ.")
         return
 
     records = extract_records(data)
@@ -659,8 +677,7 @@ async def process_number(update, context, number):
             "━━━━━━━━━━━━━━━━━━\n"
             f"📲ɴᴜᴍʙᴇʀ: {clean}\n"
             "📊 ᴛᴏᴛᴀʟ ʀᴇᴄᴏʀᴅꜱ: 0\n"
-            "🚀 ꜱᴛᴀᴛᴜꜱ: ɴᴏ ᴅᴀᴛᴀ ꜰᴏᴜɴᴅ\n\n"
-            "No authorized/test record was found."
+            "🚀 ꜱᴛᴀᴛᴜꜱ: ɴᴏ ᴅᴀᴛᴀ ꜰᴏᴜɴᴅ"
         )
         return
 
@@ -683,19 +700,19 @@ async def process_tg_to_num(update, context, tg_id):
 
     if not clean or len(clean) < 5:
         await update.message.reply_text(
-            "❌ Please send a valid Telegram User ID.\n\nExample:\n5437510481"
+            "❌ ᴘʟᴇᴀꜱᴇ ꜱᴇɴᴅ ᴀ ᴠᴀʟɪᴅ ᴛᴇʟᴇɢʀᴀᴍ ᴜꜱᴇʀ ɪᴅ."
         )
         return
 
     save_query(user, clean, "tg_to_num")
 
-    searching = await update.message.reply_text("🔎 Searching TG to Num...")
+    searching = await update.message.reply_text("🔎 ꜱᴇᴀʀᴄʜɪɴɢ...")
 
     params = {"key": API_KEY, "query": clean}
     data, error = await call_api(API_TG_TO_NUM, params)
 
     if error:
-        await searching.edit_text(f"❌ API Error: {error}\n\nPlease try again later.")
+        await searching.edit_text(f"❌ ᴀᴘɪ ᴇʀʀᴏʀ: {error}\n\nᴘʟᴇᴀꜱᴇ ᴛʀʏ ᴀɢᴀɪɴ.")
         return
 
     if not isinstance(data, dict) or "Telegram ID" not in data:
@@ -703,8 +720,6 @@ async def process_tg_to_num(update, context, tg_id):
         return
 
     text = (
-        "📱 𝗧𝗚 𝘁𝗼 𝗡𝘂𝗺 𝗟𝗼𝗼𝗸𝘂𝗽\n"
-        "━━━━━━━━━━━━━━━━━━\n"
         f"🆔 𝗧𝗲𝗹𝗲𝗴𝗿𝗮𝗺 𝗜𝗗 • {data.get('Telegram ID', 'N/A')}\n"
         f"📞 𝗣𝗵𝗼𝗻𝗲 • {data.get('Phone', 'N/A')}\n"
         f"🌍 𝗖𝗼𝘂𝗻𝘁𝗿𝘆 • {data.get('Country', 'N/A')}\n"
@@ -722,21 +737,21 @@ async def process_tg_to_num(update, context, tg_id):
 async def process_generic_lookup(update, context, api_url, query_text, title, icon):
     if not api_url:
         await update.message.reply_text(
-            f"⚠️ {icon} {title} API is not yet configured.\n\n"
-            f"Please contact admin: {ADMIN_USERNAME}"
+            f"⚠️ {icon} {title} ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ ʏᴇᴛ.\n\n"
+            f"ᴄᴏɴᴛᴀᴄᴛ ᴀᴅᴍɪɴ: {ADMIN_USERNAME}"
         )
         return
 
     user = update.effective_user
     save_query(user, query_text, title.lower())
 
-    searching = await update.message.reply_text(f"🔎 Searching {title}...")
+    searching = await update.message.reply_text(f"🔎 ꜱᴇᴀʀᴄʜɪɴɢ {title}...")
 
     params = {"key": API_KEY, "query": query_text}
     data, error = await call_api(api_url, params)
 
     if error:
-        await searching.edit_text(f"❌ API Error: {error}\n\nPlease try again later.")
+        await searching.edit_text(f"❌ ᴀᴘɪ ᴇʀʀᴏʀ: {error}")
         return
 
     records = extract_records(data)
@@ -745,13 +760,10 @@ async def process_generic_lookup(update, context, api_url, query_text, title, ic
         await searching.edit_text(f"{icon} 𝗡𝗼 𝗗𝗮𝘁𝗮 𝗙𝗼𝘂𝗻𝗱")
         return
 
-    lines = [
-        f"{icon} {title.upper()} 𝗟𝗢𝗢𝗞𝗨𝗣",
-        "━━━━━━━━━━━━━━━━━━",
-    ]
+    lines = [f"{icon} {title.upper()} 𝗟𝗢𝗢𝗞𝗨𝗣", "━━━━━━━━━━━━━━━━━━"]
 
     for index, record in enumerate(records, start=1):
-        lines.append(f"📄 Record {index}")
+        lines.append(f"📄 ʀᴇᴄᴏʀᴅ {index}")
         for key, value in record.items():
             if value is None or value == "":
                 continue
@@ -763,7 +775,7 @@ async def process_generic_lookup(update, context, api_url, query_text, title, ic
 
     text = "\n".join(lines)
     if len(text) > 4000:
-        text = text[:4000] + "\n\n...output truncated."
+        text = text[:4000] + "\n\n...ᴛʀᴜɴᴄᴀᴛᴇᴅ."
 
     await searching.edit_text(text)
 
@@ -798,13 +810,11 @@ async def pagination_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     stored_number = context.user_data.get("lookup_number")
 
     if stored_number != number:
-        await query.edit_message_text(
-            "❌ This lookup session has expired.\n\nPlease perform a new lookup."
-        )
+        await query.edit_message_text("❌ ᴛʜɪꜱ ʟᴏᴏᴋᴜᴘ ꜱᴇꜱꜱɪᴏɴ ʜᴀꜱ ᴇxᴘɪʀᴇᴅ.")
         return
 
     if not records:
-        await query.edit_message_text("❌ No lookup records available.")
+        await query.edit_message_text("❌ ɴᴏ ʟᴏᴏᴋᴜᴘ ʀᴇᴄᴏʀᴅꜱ.")
         return
 
     total_pages = max(1, math.ceil(len(records) / RECORDS_PER_PAGE))
@@ -824,11 +834,23 @@ def admin_keyboard():
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("📊 Stats", callback_data="admin:stats"),
-                InlineKeyboardButton("🔎 QueryScope", callback_data="admin:queries"),
+                InlineKeyboardButton(
+                    "📊 ꜱᴛᴀᴛꜱ",
+                    callback_data="admin:stats",
+                    style="primary",
+                ),
+                InlineKeyboardButton(
+                    "🔎 Qᴜᴇʀʏꜱᴄᴏᴘᴇ",
+                    callback_data="admin:queries",
+                    style="primary",
+                ),
             ],
             [
-                InlineKeyboardButton("🗑️ Clear QueryScope", callback_data="admin:clear_queries"),
+                InlineKeyboardButton(
+                    "🗑️ ᴄʟᴇᴀʀ Qᴜᴇʀʏꜱᴄᴏᴘᴇ",
+                    callback_data="admin:clear_queries",
+                    style="danger",
+                ),
             ],
         ]
     )
@@ -837,11 +859,11 @@ def admin_keyboard():
 async def bot_management(update: Update):
     user = update.effective_user
     if user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Admin only.")
+        await update.message.reply_text("❌ ᴀᴅᴍɪɴ ᴏɴʟʏ.")
         return
 
     await update.message.reply_text(
-        "⚙️ 𝗕𝗼𝘁 𝗠𝗮𝗻𝗮𝗴𝗲𝗺𝗲𝗻𝘁\n\nSelect an option:",
+        "⚙️ 𝗕𝗼𝘁 𝗠𝗮𝗻𝗮𝗴𝗲𝗺𝗲𝗻𝘁\n\nꜱᴇʟᴇᴄᴛ ᴀɴ ᴏᴘᴛɪᴏɴ:",
         reply_markup=admin_keyboard(),
     )
 
@@ -852,7 +874,7 @@ async def bot_management(update: Update):
 
 async def admin_stats(query):
     if query.from_user.id != ADMIN_ID:
-        await query.answer("Admin only.", show_alert=True)
+        await query.answer("ᴀᴅᴍɪɴ ᴏɴʟʏ.", show_alert=True)
         return
 
     users = get_users()
@@ -861,8 +883,8 @@ async def admin_stats(query):
     lines = [
         "📊 𝗕𝗢𝗧 𝗦𝗧𝗔𝗧𝗦",
         "━━━━━━━━━━━━━━━━━━",
-        f"👥 Total Users • {len(users)}",
-        f"✅ Verified Users • {len(verified)}",
+        f"👥 ᴛᴏᴛᴀʟ ᴜꜱᴇʀꜱ • {len(users)}",
+        f"✅ ᴠᴇʀɪꜰɪᴇᴅ ᴜꜱᴇʀꜱ • {len(verified)}",
         "",
     ]
 
@@ -870,21 +892,21 @@ async def admin_stats(query):
         username = record.get("username")
         username_text = f"@{username}" if username else "N/A"
         lines.extend([
-            f'👤 𝗡𝗮𝗺𝗲      • "{record.get("name") or "N/A"}"',
-            f'🆔 𝗨𝘀𝗲𝗿 𝗜𝗗   • "{record.get("user_id")}"',
-            f'🏷️ 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲  • "{username_text}"',
-            f'☎️ 𝗖𝗼𝗻𝘁𝗮𝗰𝘁   • "{record.get("contact") or "N/A"}"',
+            f'👤 𝗡𝗮𝗺𝗲 • "{record.get("name") or "N/A"}"',
+            f'🆔 𝗨𝘀𝗲𝗿 𝗜𝗗 • "{record.get("user_id")}"',
+            f'🏷️ 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲 • "{username_text}"',
+            f'☎️ 𝗖𝗼𝗻𝘁𝗮𝗰𝘁 • "{record.get("contact") or "N/A"}"',
             "━━━━━━━━━━━━━━━━━━",
         ])
 
     text = "\n".join(lines)
     if len(text) > 3900:
-        text = text[:3900] + "\n\n...output truncated."
+        text = text[:3900] + "\n\n...ᴛʀᴜɴᴄᴀᴛᴇᴅ."
 
     await query.edit_message_text(
         text,
         reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton("⬅️ Back", callback_data="admin:back")]]
+            [[InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="primary")]]
         ),
     )
 
@@ -895,16 +917,16 @@ async def admin_stats(query):
 
 async def admin_queries(query):
     if query.from_user.id != ADMIN_ID:
-        await query.answer("Admin only.", show_alert=True)
+        await query.answer("ᴀᴅᴍɪɴ ᴏɴʟʏ.", show_alert=True)
         return
 
     queries = get_queries()
 
     if not queries:
         await query.edit_message_text(
-            "🔎 𝗤𝘂𝗲𝗿𝘆𝗦𝗰𝗼𝗽𝗲\n\nNo queries recorded.",
+            "🔎 𝗤𝘂𝗲𝗿𝘆𝗦𝗰𝗼𝗽𝗲\n\nɴᴏ Qᴜᴇʀɪᴇꜱ ʀᴇᴄᴏʀᴅᴇᴅ.",
             reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("⬅️ Back", callback_data="admin:back")]]
+                [[InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="primary")]]
             ),
         )
         return
@@ -930,12 +952,12 @@ async def admin_queries(query):
 
     text = "\n".join(lines)
     if len(text) > 3900:
-        text = text[:3900] + "\n\n...output truncated."
+        text = text[:3900] + "\n\n...ᴛʀᴜɴᴄᴀᴛᴇᴅ."
 
     await query.edit_message_text(
         text,
         reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton("⬅️ Back", callback_data="admin:back")]]
+            [[InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="primary")]]
         ),
     )
 
@@ -946,15 +968,15 @@ async def admin_queries(query):
 
 async def clear_queries(query):
     if query.from_user.id != ADMIN_ID:
-        await query.answer("Admin only.", show_alert=True)
+        await query.answer("ᴀᴅᴍɪɴ ᴏɴʟʏ.", show_alert=True)
         return
 
     save_queries([])
 
     await query.edit_message_text(
-        "✅ QueryScope cleared.",
+        "✅ Qᴜᴇʀʏꜱᴄᴏᴘᴇ ᴄʟᴇᴀʀᴇᴅ.",
         reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton("⬅️ Back", callback_data="admin:back")]]
+            [[InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="primary")]]
         ),
     )
 
@@ -967,7 +989,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
 
     if query.from_user.id != ADMIN_ID:
-        await query.answer("Admin only.", show_alert=True)
+        await query.answer("ᴀᴅᴍɪɴ ᴏɴʟʏ.", show_alert=True)
         return
 
     await query.answer()
@@ -980,7 +1002,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await clear_queries(query)
     elif query.data == "admin:back":
         await query.edit_message_text(
-            "⚙️ 𝗕𝗼𝘁 𝗠𝗮𝗻𝗮𝗴𝗲𝗺𝗲𝗻𝘁\n\nSelect an option:",
+            "⚙️ 𝗕𝗼𝘁 𝗠𝗮𝗻𝗮𝗴𝗲𝗺𝗲𝗻𝘁\n\nꜱᴇʟᴇᴄᴛ ᴀɴ ᴏᴘᴛɪᴏɴ:",
             reply_markup=admin_keyboard(),
         )
 
@@ -1011,10 +1033,9 @@ async def group_protection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_message(
             chat_id=chat.id,
-            text="❌ This bot is not approved for this group.\n\nThe bot will leave now.",
+            text="❌ ᴛʜɪꜱ ʙᴏᴛ ɪꜱ ɴᴏᴛ ᴀᴘᴘʀᴏᴠᴇᴅ ꜰᴏʀ ᴛʜɪꜱ ɢʀᴏᴜᴘ.\n\nᴛʜᴇ ʙᴏᴛ ᴡɪʟʟ ʟᴇᴀᴠᴇ ɴᴏᴡ.",
         )
         await context.bot.leave_chat(chat_id=chat.id)
-        print("Left unapproved group:", chat.id, chat.title)
     except Exception as error:
         print("GROUP PROTECTION ERROR:", repr(error))
 
@@ -1033,15 +1054,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     member = await is_member_of_all_channels(user.id, context)
     if not member:
         await message.reply_text(
-            "🔐 Please join all channels to use this bot.\n\n"
-            "After joining, press ✅ I Have Joined.",
+            "🔐 ᴘʟᴇᴀꜱᴇ ᴊᴏɪɴ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ ᴛᴏ ᴜꜱᴇ ᴛʜɪꜱ ʙᴏᴛ.",
             reply_markup=channel_join_keyboard(),
         )
         return
 
     if not is_verified(user.id):
         await message.reply_text(
-            "🔐 Please verify first by sharing your own contact.",
+            "🔐 ᴘʟᴇᴀꜱᴇ ᴠᴇʀɪꜰʏ ꜰɪʀꜱᴛ.",
             reply_markup=contact_keyboard(),
         )
         return
@@ -1050,83 +1070,83 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---------- Lookup buttons ----------
 
-    if text == "📱 Number Lookup":
+    if text == "📱 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ":
         context.user_data["waiting_type"] = "number"
-        await message.reply_text("📞 Send 10-digit number:\n\nExample:\n9876543210")
+        await message.reply_text("📞 ꜱᴇɴᴅ 10-ᴅɪɢɪᴛ ɴᴜᴍʙᴇʀ:")
         return
 
-    if text == "🔢 TG to Num":
+    if text == "🔢 ᴛɢ ᴛᴏ ɴᴜᴍ":
         context.user_data["waiting_type"] = "tg_to_num"
-        await message.reply_text("🔢 Send Telegram User ID:\n\nExample:\n5437510481")
+        await message.reply_text("🔢 ꜱᴇɴᴅ ᴛᴇʟᴇɢʀᴀᴍ ᴜꜱᴇʀ ɪᴅ:")
         return
 
-    if text == "🪪 Aadhar":
+    if text == "🪪 ᴀᴀᴅʜᴀʀ":
         if not API_AADHAR:
-            await message.reply_text(f"⚠️ Aadhar API not configured yet.\n\nContact {ADMIN_USERNAME}")
+            await message.reply_text(f"⚠️ ᴀᴀᴅʜᴀʀ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
             return
         context.user_data["waiting_type"] = "aadhar"
-        await message.reply_text("🪪 Send 12-digit Aadhar number:")
+        await message.reply_text("🪪 ꜱᴇɴᴅ 12-ᴅɪɢɪᴛ ᴀᴀᴅʜᴀʀ ɴᴜᴍʙᴇʀ:")
         return
 
-    if text == "💳 Pan":
+    if text == "💳 ᴘᴀɴ":
         if not API_PAN:
-            await message.reply_text(f"⚠️ Pan API not configured yet.\n\nContact {ADMIN_USERNAME}")
+            await message.reply_text(f"⚠️ ᴘᴀɴ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
             return
         context.user_data["waiting_type"] = "pan"
-        await message.reply_text("💳 Send PAN number (e.g. ABCDE1234F):")
+        await message.reply_text("💳 ꜱᴇɴᴅ ᴘᴀɴ ɴᴜᴍʙᴇʀ:")
         return
 
-    if text == "🏦 IFSC":
+    if text == "🏦 ɪꜰꜱᴄ":
         if not API_IFSC:
-            await message.reply_text(f"⚠️ IFSC API not configured yet.\n\nContact {ADMIN_USERNAME}")
+            await message.reply_text(f"⚠️ ɪꜰꜱᴄ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
             return
         context.user_data["waiting_type"] = "ifsc"
-        await message.reply_text("🏦 Send IFSC code (e.g. SBIN0001234):")
+        await message.reply_text("🏦 ꜱᴇɴᴅ ɪꜰꜱᴄ ᴄᴏᴅᴇ:")
         return
 
-    if text == "📍 Pin Code":
+    if text == "📍 ᴘɪɴ ᴄᴏᴅᴇ":
         if not API_PINCODE:
-            await message.reply_text(f"⚠️ Pin Code API not configured yet.\n\nContact {ADMIN_USERNAME}")
+            await message.reply_text(f"⚠️ ᴘɪɴ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
             return
         context.user_data["waiting_type"] = "pincode"
-        await message.reply_text("📍 Send PIN code (e.g. 110001):")
+        await message.reply_text("📍 ꜱᴇɴᴅ ᴘɪɴ ᴄᴏᴅᴇ:")
         return
 
-    if text == "🌐 IP":
+    if text == "🌐 ɪᴘ":
         if not API_IP:
-            await message.reply_text(f"⚠️ IP API not configured yet.\n\nContact {ADMIN_USERNAME}")
+            await message.reply_text(f"⚠️ ɪᴘ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
             return
         context.user_data["waiting_type"] = "ip"
-        await message.reply_text("🌐 Send IP address (e.g. 8.8.8.8):")
+        await message.reply_text("🌐 ꜱᴇɴᴅ ɪᴘ ᴀᴅᴅʀᴇꜱꜱ:")
         return
 
-    if text == "📧 Email":
+    if text == "📧 ᴇᴍᴀɪʟ":
         if not API_EMAIL:
-            await message.reply_text(f"⚠️ Email API not configured yet.\n\nContact {ADMIN_USERNAME}")
+            await message.reply_text(f"⚠️ ᴇᴍᴀɪʟ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
             return
         context.user_data["waiting_type"] = "email"
-        await message.reply_text("📧 Send email address:")
+        await message.reply_text("📧 ꜱᴇɴᴅ ᴇᴍᴀɪʟ ᴀᴅᴅʀᴇꜱꜱ:")
         return
 
-    if text == "☁️ Weather":
+    if text == "☁️ ᴡᴇᴀᴛʜᴇʀ":
         if not API_WEATHER:
-            await message.reply_text(f"⚠️ Weather API not configured yet.\n\nContact {ADMIN_USERNAME}")
+            await message.reply_text(f"⚠️ ᴡᴇᴀᴛʜᴇʀ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
             return
         context.user_data["waiting_type"] = "weather"
-        await message.reply_text("☁️ Send city name (e.g. Delhi):")
+        await message.reply_text("☁️ ꜱᴇɴᴅ ᴄɪᴛʏ ɴᴀᴍᴇ:")
         return
 
     # ---------- Other buttons ----------
 
-    if text == "👤 My Contact":
+    if text == "👤 ᴍʏ ᴄᴏɴᴛᴀᴄᴛ":
         await show_my_contact(update)
         return
 
-    if text == "❓ Help":
+    if text == "❓ ʜᴇʟᴘ":
         await show_help(update)
         return
 
-    if text == "⚙️ Bot Management":
+    if text == "⚙️ ʙᴏᴛ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ":
         await bot_management(update)
         return
 
@@ -1180,7 +1200,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await message.reply_text(
-        "Please choose an option from the menu.",
+        "ᴘʟᴇᴀꜱᴇ ᴄʜᴏᴏꜱᴇ ᴀɴ ᴏᴘᴛɪᴏɴ ꜰʀᴏᴍ ᴛʜᴇ ᴍᴇɴᴜ.",
         reply_markup=main_keyboard(user.id),
     )
 
