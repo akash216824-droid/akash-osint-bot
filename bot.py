@@ -62,7 +62,7 @@ API_WEATHER = ""
 API_KEY = "DEMO"
 
 RECORDS_PER_PAGE = 3      # Number lookup pagination
-STATS_PER_PAGE = 5        # Stats pagination
+STATS_PER_PAGE = 15       # Stats pagination
 
 USERS_FILE = "users.json"
 VERIFIED_FILE = "verified.json"
