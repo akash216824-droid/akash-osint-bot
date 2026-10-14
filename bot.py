@@ -61,7 +61,8 @@ API_WEATHER = ""
 
 API_KEY = "DEMO"
 
-RECORDS_PER_PAGE = 3
+RECORDS_PER_PAGE = 3      # Number lookup pagination
+STATS_PER_PAGE = 5        # Stats pagination
 
 USERS_FILE = "users.json"
 VERIFIED_FILE = "verified.json"
@@ -203,19 +204,10 @@ def main_keyboard(user_id):
         ],
     ]
 
-    # Admin को Help नहीं, सिर्फ Bot Management
     if user_id == ADMIN_ID:
-        rows.append(
-            [
-                KeyboardButton("⚙️ ʙᴏᴛ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ", style="danger"),
-            ]
-        )
+        rows.append([KeyboardButton("⚙️ ʙᴏᴛ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ", style="danger")])
     else:
-        rows.append(
-            [
-                KeyboardButton("❓ ʜᴇʟᴘ", style="success"),
-            ]
-        )
+        rows.append([KeyboardButton("❓ ʜᴇʟᴘ", style="success")])
 
     return ReplyKeyboardMarkup(
         rows,
@@ -225,22 +217,12 @@ def main_keyboard(user_id):
 
 
 # ============================================================
-# CONTACT VERIFICATION KEYBOARD
+# CONTACT KEYBOARD
 # ============================================================
 
 def contact_keyboard():
-    keyboard = [
-        [
-            KeyboardButton(
-                "📱 ꜱʜᴀʀᴇ ᴍʏ ᴄᴏɴᴛᴀᴄᴛ",
-                request_contact=True,
-                style="success",
-            )
-        ]
-    ]
-
     return ReplyKeyboardMarkup(
-        keyboard,
+        [[KeyboardButton("📱 ꜱʜᴀʀᴇ ᴍʏ ᴄᴏɴᴛᴀᴄᴛ", request_contact=True, style="success")]],
         resize_keyboard=True,
         one_time_keyboard=True,
     )
@@ -253,38 +235,19 @@ def contact_keyboard():
 def channel_join_keyboard():
     rows = []
     for ch in CHANNELS:
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    f"📢 ᴊᴏɪɴ {ch['name']}",
-                    url=ch["link"],
-                    style="primary",
-                )
-            ]
-        )
-    rows.append(
-        [
-            InlineKeyboardButton(
-                "✅ ɪ ʜᴀᴠᴇ ᴊᴏɪɴᴇᴅ",
-                callback_data="check_joined",
-                style="success",
-            )
-        ]
-    )
+        rows.append([InlineKeyboardButton(f"📢 ᴊᴏɪɴ {ch['name']}", url=ch["link"], style="primary")])
+    rows.append([InlineKeyboardButton("✅ ɪ ʜᴀᴠᴇ ᴊᴏɪɴᴇᴅ", callback_data="check_joined", style="success")])
     return InlineKeyboardMarkup(rows)
 
 
 # ============================================================
-# CHECK CHANNEL MEMBERSHIP
+# CHANNEL CHECK
 # ============================================================
 
 async def is_member_of_all_channels(user_id, context):
     for ch in CHANNELS:
         try:
-            member = await context.bot.get_chat_member(
-                chat_id=ch["username"],
-                user_id=user_id,
-            )
+            member = await context.bot.get_chat_member(chat_id=ch["username"], user_id=user_id)
             if member.status not in ["member", "administrator", "creator"]:
                 return False
         except Exception as error:
@@ -305,7 +268,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     register_user(user)
 
     member = await is_member_of_all_channels(user.id, context)
-
     if not member:
         await update.message.reply_text(
             "🔐 ᴘʟᴇᴀꜱᴇ ᴊᴏɪɴ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ ᴛᴏ ᴜꜱᴇ ᴛʜɪꜱ ʙᴏᴛ.\n\n"
@@ -317,7 +279,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_verified(user.id):
         await update.message.reply_text(
             "🔐 ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇQᴜɪʀᴇᴅ.\n\n"
-            "ᴘʟᴇᴀꜱᴇ ꜱʜᴀʀᴇ ʏᴏᴜʀ ᴏᴡɴ ᴛᴇʟᴇɢʀᴀᴍ ᴄᴏɴᴛᴀᴄᴛ ᴜꜱɪɴɢ ᴛʜᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ.",
+            "ᴘʟᴇᴀꜱᴇ ꜱʜᴀʀᴇ ʏᴏᴜʀ ᴏᴡɴ ᴛᴇʟᴇɢʀᴀᴍ ᴄᴏɴᴛᴀᴄᴛ.",
             reply_markup=contact_keyboard(),
         )
         return
@@ -332,15 +294,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
-# CLOSE COMMAND
+# CLOSE
 # ============================================================
 
 async def close_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("waiting_type", None)
     context.user_data.pop("messenger_mode", None)
     await update.message.reply_text(
-        "🔙 ᴋᴇʏʙᴏᴀʀᴅ ʜɪᴅᴅᴇɴ.\n\n"
-        "ꜱᴇɴᴅ /start ᴛᴏ ꜱʜᴏᴡ ᴛʜᴇ ᴍᴇɴᴜ ᴀɢᴀɪɴ.",
+        "🔙 ᴋᴇʏʙᴏᴀʀᴅ ʜɪᴅᴅᴇɴ.\n\nꜱᴇɴᴅ /start ᴛᴏ ꜱʜᴏᴡ ᴛʜᴇ ᴍᴇɴᴜ ᴀɢᴀɪɴ.",
         reply_markup=ReplyKeyboardRemove(),
     )
 
@@ -352,23 +313,18 @@ async def close_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def check_joined_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     user = query.from_user
-    member = await is_member_of_all_channels(user.id, context)
 
+    member = await is_member_of_all_channels(user.id, context)
     if not member:
         await query.edit_message_text(
-            "❌ ʏᴏᴜ ʜᴀᴠᴇɴ'ᴛ ᴊᴏɪɴᴇᴅ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ ʏᴇᴛ.\n\n"
-            "ᴘʟᴇᴀꜱᴇ ᴊᴏɪɴ ᴀʟʟ ᴀɴᴅ ᴘʀᴇꜱꜱ ✅ ɪ ʜᴀᴠᴇ ᴊᴏɪɴᴇᴅ ᴀɢᴀɪɴ.",
+            "❌ ʏᴏᴜ ʜᴀᴠᴇɴ'ᴛ ᴊᴏɪɴᴇᴅ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ ʏᴇᴛ.\n\nᴘʟᴇᴀꜱᴇ ᴊᴏɪɴ ᴀʟʟ ᴀɴᴅ ᴘʀᴇꜱꜱ ✅ ɪ ʜᴀᴠᴇ ᴊᴏɪɴᴇᴅ ᴀɢᴀɪɴ.",
             reply_markup=channel_join_keyboard(),
         )
         return
 
     if not is_verified(user.id):
-        await query.edit_message_text(
-            "✅ ᴄʜᴀɴɴᴇʟꜱ ᴠᴇʀɪꜰɪᴇᴅ!\n\n"
-            "ɴᴏᴡ ᴘʟᴇᴀꜱᴇ ꜱʜᴀʀᴇ ʏᴏᴜʀ ᴄᴏɴᴛᴀᴄᴛ ᴜꜱɪɴɢ /start",
-        )
+        await query.edit_message_text("✅ ᴄʜᴀɴɴᴇʟꜱ ᴠᴇʀɪꜰɪᴇᴅ!\n\nɴᴏᴡ ᴘʟᴇᴀꜱᴇ ꜱʜᴀʀᴇ ʏᴏᴜʀ ᴄᴏɴᴛᴀᴄᴛ ᴜꜱɪɴɢ /start")
         return
 
     await query.edit_message_text("✅ ᴀʟʟ ᴠᴇʀɪꜰɪᴇᴅ! ᴜꜱᴇ /start ᴛᴏ ᴀᴄᴄᴇꜱꜱ ᴛʜᴇ ʙᴏᴛ.")
@@ -386,12 +342,8 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     contact = message.contact
-
     if contact.user_id != user.id:
-        await message.reply_text(
-            "❌ ᴘʟᴇᴀꜱᴇ ꜱʜᴀʀᴇ ʏᴏᴜʀ ᴏᴡɴ ᴛᴇʟᴇɢʀᴀᴍ ᴄᴏɴᴛᴀᴄᴛ.",
-            reply_markup=contact_keyboard(),
-        )
+        await message.reply_text("❌ ᴘʟᴇᴀꜱᴇ ꜱʜᴀʀᴇ ʏᴏᴜʀ ᴏᴡɴ ᴛᴇʟᴇɢʀᴀᴍ ᴄᴏɴᴛᴀᴄᴛ.", reply_markup=contact_keyboard())
         return
 
     verified = get_verified()
@@ -405,8 +357,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_verified(verified)
 
     await message.reply_text(
-        "✅ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟ!\n\n"
-        "ʏᴏᴜ ᴄᴀɴ ɴᴏᴡ ᴜꜱᴇ ᴛʜᴇ ʙᴏᴛ.",
+        "✅ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟ!\n\nʏᴏᴜ ᴄᴀɴ ɴᴏᴡ ᴜꜱᴇ ᴛʜᴇ ʙᴏᴛ.",
         reply_markup=main_keyboard(user.id),
     )
 
@@ -434,10 +385,7 @@ async def show_my_contact(update: Update):
     record = verified.get(str(user.id))
 
     if not record:
-        await update.message.reply_text(
-            "❌ ʏᴏᴜ ᴀʀᴇ ɴᴏᴛ ᴠᴇʀɪꜰɪᴇᴅ ʏᴇᴛ.",
-            reply_markup=contact_keyboard(),
-        )
+        await update.message.reply_text("❌ ʏᴏᴜ ᴀʀᴇ ɴᴏᴛ ᴠᴇʀɪꜰɪᴇᴅ ʏᴇᴛ.", reply_markup=contact_keyboard())
         return
 
     contact = record.get("contact")
@@ -470,7 +418,7 @@ def clean_number(text):
 
 
 # ============================================================
-# API CALL HELPER
+# API HELPER
 # ============================================================
 
 async def call_api(url, params):
@@ -498,7 +446,7 @@ async def call_api(url, params):
 
 
 # ============================================================
-# API RECORD EXTRACTION
+# RECORD EXTRACT
 # ============================================================
 
 def extract_records(data):
@@ -516,7 +464,7 @@ def extract_records(data):
 
 
 # ============================================================
-# SAFE RECORD FORMAT
+# SAFE RECORD
 # ============================================================
 
 def make_safe_record(record):
@@ -541,7 +489,6 @@ def make_safe_record(record):
         or record.get("region") or "N/A"
     )
     circle = str(circle).replace("&amp;", "&")
-
     email = record.get("email") or record.get("Email") or None
 
     return {
@@ -607,7 +554,7 @@ def build_page(records, number, page):
 
 
 # ============================================================
-# PAGINATION KEYBOARD
+# PAGINATION KEYBOARD (Number lookup)
 # ============================================================
 
 def pagination_keyboard(number, page, total):
@@ -615,36 +562,18 @@ def pagination_keyboard(number, page, total):
     buttons = []
 
     if page > 0:
-        buttons.append(
-            InlineKeyboardButton(
-                "◀️ ᴘʀᴇᴠɪᴏᴜꜱ",
-                callback_data=f"lookup:{number}:{page - 1}",
-                style="primary",
-            )
-        )
+        buttons.append(InlineKeyboardButton("◀️ ᴘʀᴇᴠɪᴏᴜꜱ", callback_data=f"lookup:{number}:{page - 1}", style="primary"))
 
-    buttons.append(
-        InlineKeyboardButton(
-            f"📄 {page + 1}/{total_pages}",
-            callback_data="lookup:page",
-            style="success",
-        )
-    )
+    buttons.append(InlineKeyboardButton(f"📄 {page + 1}/{total_pages}", callback_data="lookup:page", style="success"))
 
     if page < total_pages - 1:
-        buttons.append(
-            InlineKeyboardButton(
-                "ɴᴇxᴛ ▶️",
-                callback_data=f"lookup:{number}:{page + 1}",
-                style="primary",
-            )
-        )
+        buttons.append(InlineKeyboardButton("ɴᴇxᴛ ▶️", callback_data=f"lookup:{number}:{page + 1}", style="primary"))
 
     return InlineKeyboardMarkup([buttons])
 
 
 # ============================================================
-# SAVE QUERY
+# SAVE QUERY (history preserved, last 25 kept)
 # ============================================================
 
 def save_query(user, number, query_type="number"):
@@ -657,6 +586,7 @@ def save_query(user, number, query_type="number"):
         "type": query_type,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
+    # Keep last 25 only – older rotate out (not deleted from file until 26th comes)
     queries = queries[-25:]
     save_queries(queries)
 
@@ -670,13 +600,10 @@ async def process_number(update, context, number):
     clean = clean_number(number)
 
     if not clean.isdigit() or len(clean) != 10:
-        await update.message.reply_text(
-            "❌ ᴘʟᴇᴀꜱᴇ ꜱᴇɴᴅ ᴀ ᴠᴀʟɪᴅ 10-ᴅɪɢɪᴛ ᴍᴏʙɪʟᴇ ɴᴜᴍʙᴇʀ."
-        )
+        await update.message.reply_text("❌ ᴘʟᴇᴀꜱᴇ ꜱᴇɴᴅ ᴀ ᴠᴀʟɪᴅ 10-ᴅɪɢɪᴛ ᴍᴏʙɪʟᴇ ɴᴜᴍʙᴇʀ.")
         return
 
     save_query(user, clean, "number")
-
     searching = await update.message.reply_text("🔎 ꜱᴇᴀʀᴄʜɪɴɢ...")
 
     params = {"key": API_KEY, "query": clean}
@@ -721,7 +648,6 @@ async def process_tg_to_num(update, context, tg_id):
         return
 
     save_query(user, clean, "tg_to_num")
-
     searching = await update.message.reply_text("🔎 ꜱᴇᴀʀᴄʜɪɴɢ...")
 
     params = {"key": API_KEY, "query": clean}
@@ -742,7 +668,6 @@ async def process_tg_to_num(update, context, tg_id):
         f"📡 𝗖𝗼𝘂𝗻𝘁𝗿𝘆 𝗖𝗼𝗱𝗲 • {data.get('Country Code', 'N/A')}\n\n"
         f"├ 🛠️ ᴅᴇᴠᴇʟᴏᴘᴇʀ: {DEVELOPER} • 🛰️"
     )
-
     await searching.edit_text(text)
 
 
@@ -752,14 +677,11 @@ async def process_tg_to_num(update, context, tg_id):
 
 async def process_generic_lookup(update, context, api_url, query_text, title, icon):
     if not api_url:
-        await update.message.reply_text(
-            f"⚠️ {icon} {title} ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}"
-        )
+        await update.message.reply_text(f"⚠️ {icon} {title} ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
         return
 
     user = update.effective_user
     save_query(user, query_text, title.lower())
-
     searching = await update.message.reply_text(f"🔎 ꜱᴇᴀʀᴄʜɪɴɢ {title}...")
 
     params = {"key": API_KEY, "query": query_text}
@@ -770,13 +692,11 @@ async def process_generic_lookup(update, context, api_url, query_text, title, ic
         return
 
     records = extract_records(data)
-
     if not records:
         await searching.edit_text(f"{icon} 𝗡𝗼 𝗗𝗮𝘁𝗮 𝗙𝗼𝘂𝗻𝗱")
         return
 
     lines = [f"{icon} {title.upper()} 𝗟𝗢𝗢𝗞𝗨𝗣", "━━━━━━━━━━━━━━━━━━"]
-
     for index, record in enumerate(records, start=1):
         lines.append(f"📄 ʀᴇᴄᴏʀᴅ {index}")
         for key, value in record.items():
@@ -787,27 +707,23 @@ async def process_generic_lookup(update, context, api_url, query_text, title, ic
         lines.append("──────────────")
 
     lines.append(f"├ 🛠️ ᴅᴇᴠᴇʟᴏᴘᴇʀ: {DEVELOPER} • 🛰️")
-
     text = "\n".join(lines)
     if len(text) > 4000:
         text = text[:4000] + "\n\n...ᴛʀᴜɴᴄᴀᴛᴇᴅ."
-
     await searching.edit_text(text)
 
 
 # ============================================================
-# PAGINATION CALLBACK
+# PAGINATION CALLBACK (number lookup)
 # ============================================================
 
 async def pagination_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     data = query.data
 
     if data == "lookup:page":
         return
-
     if not data.startswith("lookup:"):
         return
 
@@ -827,7 +743,6 @@ async def pagination_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     if stored_number != number:
         await query.edit_message_text("❌ ꜱᴇꜱꜱɪᴏɴ ᴇxᴘɪʀᴇᴅ.")
         return
-
     if not records:
         await query.edit_message_text("❌ ɴᴏ ʀᴇᴄᴏʀᴅꜱ.")
         return
@@ -842,44 +757,30 @@ async def pagination_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 # ============================================================
-# ADMIN MANAGEMENT
+# ADMIN KEYBOARD
 # ============================================================
 
 def admin_keyboard():
-    return InlineKeyboardMarkup(
+    return InlineKeyboardMarkup([
         [
-            [
-                InlineKeyboardButton("📊 ꜱᴛᴀᴛꜱ", callback_data="admin:stats", style="primary"),
-                InlineKeyboardButton("🔎 Qᴜᴇʀʏꜱᴄᴏᴘᴇ", callback_data="admin:queries", style="primary"),
-            ],
-            [
-                InlineKeyboardButton("📤 ʙᴏᴛ ᴍᴇꜱꜱᴇɴɢᴇʀ", callback_data="admin:messenger", style="success"),
-            ],
-            [
-                InlineKeyboardButton("🗑️ ᴄʟᴇᴀʀ Qᴜᴇʀʏꜱᴄᴏᴘᴇ", callback_data="admin:clear_queries", style="danger"),
-            ],
-        ]
-    )
+            InlineKeyboardButton("📊 ꜱᴛᴀᴛꜱ", callback_data="admin:stats", style="primary"),
+            InlineKeyboardButton("🔎 Qᴜᴇʀʏꜱᴄᴏᴘᴇ", callback_data="admin:queries", style="primary"),
+        ],
+        [InlineKeyboardButton("📤 ʙᴏᴛ ᴍᴇꜱꜱᴇɴɢᴇʀ", callback_data="admin:messenger", style="success")],
+        [InlineKeyboardButton("🗑️ ᴄʟᴇᴀʀ Qᴜᴇʀʏꜱᴄᴏᴘᴇ", callback_data="admin:clear_queries", style="danger")],
+    ])
 
 
 def messenger_keyboard():
-    return InlineKeyboardMarkup(
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📝 ᴛᴇxᴛ ᴍᴇꜱꜱᴀɢᴇ", callback_data="messenger:text", style="primary")],
         [
-            [
-                InlineKeyboardButton("📝 ᴛᴇxᴛ ᴍᴇꜱꜱᴀɢᴇ", callback_data="messenger:text", style="primary"),
-            ],
-            [
-                InlineKeyboardButton("🖼️ ᴘʜᴏᴛᴏ", callback_data="messenger:photo", style="primary"),
-                InlineKeyboardButton("🎬 ᴠɪᴅᴇᴏ", callback_data="messenger:video", style="primary"),
-            ],
-            [
-                InlineKeyboardButton("📄 ᴅᴏᴄᴜᴍᴇɴᴛ", callback_data="messenger:document", style="primary"),
-            ],
-            [
-                InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="danger"),
-            ],
-        ]
-    )
+            InlineKeyboardButton("🖼️ ᴘʜᴏᴛᴏ", callback_data="messenger:photo", style="primary"),
+            InlineKeyboardButton("🎬 ᴠɪᴅᴇᴏ", callback_data="messenger:video", style="primary"),
+        ],
+        [InlineKeyboardButton("📄 ᴅᴏᴄᴜᴍᴇɴᴛ", callback_data="messenger:document", style="primary")],
+        [InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="danger")],
+    ])
 
 
 async def bot_management(update: Update):
@@ -887,37 +788,45 @@ async def bot_management(update: Update):
     if user.id != ADMIN_ID:
         await update.message.reply_text("❌ ᴀᴅᴍɪɴ ᴏɴʟʏ.")
         return
-
-    await update.message.reply_text(
-        "⚙️ 𝗕𝗼𝘁 𝗠𝗮𝗻𝗮𝗴𝗲𝗺𝗲𝗻𝘁\n\nꜱᴇʟᴇᴄᴛ ᴀɴ ᴏᴘᴛɪᴏɴ:",
-        reply_markup=admin_keyboard(),
-    )
+    await update.message.reply_text("⚙️ 𝗕𝗼𝘁 𝗠𝗮𝗻𝗮𝗴𝗲𝗺𝗲𝗻𝘁\n\nꜱᴇʟᴇᴄᴛ ᴀɴ ᴏᴘᴛɪᴏɴ:", reply_markup=admin_keyboard())
 
 
 # ============================================================
-# ADMIN STATS
+# ADMIN STATS (paginated)
 # ============================================================
 
-async def admin_stats(query):
+async def admin_stats(query, page=0):
     if query.from_user.id != ADMIN_ID:
         await query.answer("ᴀᴅᴍɪɴ ᴏɴʟʏ.", show_alert=True)
         return
 
     users = get_users()
     verified = get_verified()
+    verified_list = list(verified.values())
+    total_verified = len(verified_list)
+
+    total_pages = max(1, math.ceil(total_verified / STATS_PER_PAGE))
+    page = max(0, min(page, total_pages - 1))
+
+    start = page * STATS_PER_PAGE
+    end = start + STATS_PER_PAGE
+    page_users = verified_list[start:end]
 
     lines = [
         "📊 𝗕𝗢𝗧 𝗦𝗧𝗔𝗧𝗦",
         "━━━━━━━━━━━━━━━━━━",
         f"👥 ᴛᴏᴛᴀʟ ᴜꜱᴇʀꜱ • {len(users)}",
-        f"✅ ᴠᴇʀɪꜰɪᴇᴅ ᴜꜱᴇʀꜱ • {len(verified)}",
+        f"✅ ᴠᴇʀɪꜰɪᴇᴅ ᴜꜱᴇʀꜱ • {total_verified}",
+        f"📄 ᴘᴀɢᴇ • {page + 1}/{total_pages}",
+        "━━━━━━━━━━━━━━━━━━",
         "",
     ]
 
-    for record in verified.values():
+    for i, record in enumerate(page_users, start=start + 1):
         username = record.get("username")
         username_text = f"@{username}" if username else "N/A"
         lines.extend([
+            f"#{i}",
             f'👤 𝗡𝗮𝗺𝗲 • "{record.get("name") or "N/A"}"',
             f'🆔 𝗨𝘀𝗲𝗿 𝗜𝗗 • "{record.get("user_id")}"',
             f'🏷️ 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲 • "{username_text}"',
@@ -926,19 +835,21 @@ async def admin_stats(query):
         ])
 
     text = "\n".join(lines)
-    if len(text) > 3900:
-        text = text[:3900] + "\n\n...ᴛʀᴜɴᴄᴀᴛᴇᴅ."
 
-    await query.edit_message_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="primary")]]
-        ),
-    )
+    row1 = []
+    if page > 0:
+        row1.append(InlineKeyboardButton("⬅️ ᴘʀᴇᴠ", callback_data=f"admin:stats:{page - 1}", style="primary"))
+    row1.append(InlineKeyboardButton(f"📄 {page + 1}/{total_pages}", callback_data="admin:stats:nop", style="success"))
+    if page < total_pages - 1:
+        row1.append(InlineKeyboardButton("ɴᴇxᴛ ➡️", callback_data=f"admin:stats:{page + 1}", style="primary"))
+
+    buttons = [row1, [InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="danger")]]
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 
 # ============================================================
-# ADMIN QUERY SCOPE
+# ADMIN QUERY SCOPE (no masking)
 # ============================================================
 
 async def admin_queries(query):
@@ -951,40 +862,38 @@ async def admin_queries(query):
     if not queries:
         await query.edit_message_text(
             "🔎 𝗤𝘂𝗲𝗿𝘆𝗦𝗰𝗼𝗽𝗲\n\nɴᴏ Qᴜᴇʀɪᴇꜱ ʀᴇᴄᴏʀᴅᴇᴅ.",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="primary")]]
-            ),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="primary")]]),
         )
         return
 
+    recent = list(reversed(queries))[:20]
+
     lines = ["🔎 𝗤𝗨𝗘𝗥𝗬𝗦𝗖𝗢𝗣𝗘", "━━━━━━━━━━━━━━━━━━"]
-
-    for index, item in enumerate(reversed(queries), start=1):
-        number = str(item.get("number", ""))
+    for index, item in enumerate(recent, start=1):
+        number = str(item.get("number", "N/A"))
         qtype = item.get("type", "number").upper()
-
-        if len(number) > 4:
-            display_number = "*" * (len(number) - 4) + number[-4:]
-        else:
-            display_number = "****"
+        name = item.get("name") or "N/A"
+        user_id = item.get("user_id", "N/A")
+        username = item.get("username")
+        username_text = f"@{username}" if username else "N/A"
 
         lines.extend([
             f"#{index}",
-            f"👤 {item.get('name') or 'N/A'}",
-            f"🆔 {item.get('user_id')}",
-            f"📞 {qtype} • {display_number}",
+            f"👤 {name}",
+            f"🆔 `{user_id}`",
+            f"🏷️ {username_text}",
+            f"📞 {qtype} • `{number}`",
             "──────────────",
         ])
 
     text = "\n".join(lines)
-    if len(text) > 3900:
-        text = text[:3900] + "\n\n...ᴛʀᴜɴᴄᴀᴛᴇᴅ."
+    if len(text) > 4000:
+        text = text[:4000] + "\n\n...ᴛʀᴜɴᴄᴀᴛᴇᴅ."
 
     await query.edit_message_text(
         text,
-        reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="primary")]]
-        ),
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="primary")]]),
     )
 
 
@@ -996,14 +905,10 @@ async def clear_queries(query):
     if query.from_user.id != ADMIN_ID:
         await query.answer("ᴀᴅᴍɪɴ ᴏɴʟʏ.", show_alert=True)
         return
-
     save_queries([])
-
     await query.edit_message_text(
         "✅ Qᴜᴇʀʏꜱᴄᴏᴘᴇ ᴄʟᴇᴀʀᴇᴅ.",
-        reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="primary")]]
-        ),
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="primary")]]),
     )
 
 
@@ -1013,30 +918,36 @@ async def clear_queries(query):
 
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-
     if query.from_user.id != ADMIN_ID:
         await query.answer("ᴀᴅᴍɪɴ ᴏɴʟʏ.", show_alert=True)
         return
-
     await query.answer()
 
-    if query.data == "admin:stats":
-        await admin_stats(query)
-    elif query.data == "admin:queries":
+    data = query.data
+
+    if data == "admin:stats":
+        await admin_stats(query, 0)
+    elif data.startswith("admin:stats:"):
+        page_str = data.split(":")[-1]
+        if page_str == "nop":
+            return
+        try:
+            page = int(page_str)
+        except ValueError:
+            return
+        await admin_stats(query, page)
+    elif data == "admin:queries":
         await admin_queries(query)
-    elif query.data == "admin:clear_queries":
+    elif data == "admin:clear_queries":
         await clear_queries(query)
-    elif query.data == "admin:messenger":
+    elif data == "admin:messenger":
         await query.edit_message_text(
-            "📤 𝗕𝗼𝘁 𝗠𝗲𝘀𝘀𝗲𝗻𝗴𝗲𝗿\n\n"
-            "ᴡʜᴀᴛ ᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ꜱᴇɴᴅ?\n\n"
-            "📝 ᴛᴇxᴛ ᴍᴇꜱꜱᴀɢᴇ\n"
-            "🖼️ ᴘʜᴏᴛᴏ (ᴡɪᴛʜ ᴏʀ ᴡɪᴛʜᴏᴜᴛ ᴄᴀᴘᴛɪᴏɴ)\n"
-            "🎬 ᴠɪᴅᴇᴏ (ᴡɪᴛʜ ᴏʀ ᴡɪᴛʜᴏᴜᴛ ᴄᴀᴘᴛɪᴏɴ)\n"
-            "📄 ᴅᴏᴄᴜᴍᴇɴᴛ (ᴡɪᴛʜ ᴏʀ ᴡɪᴛʜᴏᴜᴛ ᴄᴀᴘᴛɪᴏɴ)",
+            "📤 𝗕𝗼𝘁 𝗠𝗲𝘀𝘀𝗲𝗻𝗴𝗲𝗿\n\nᴡʜᴀᴛ ᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ꜱᴇɴᴅ?\n\n"
+            "📝 ᴛᴇxᴛ ᴍᴇꜱꜱᴀɢᴇ\n🖼️ ᴘʜᴏᴛᴏ (ᴡɪᴛʜ ᴏʀ ᴡɪᴛʜᴏᴜᴛ ᴄᴀᴘᴛɪᴏɴ)\n"
+            "🎬 ᴠɪᴅᴇᴏ (ᴡɪᴛʜ ᴏʀ ᴡɪᴛʜᴏᴜᴛ ᴄᴀᴘᴛɪᴏɴ)\n📄 ᴅᴏᴄᴜᴍᴇɴᴛ (ᴡɪᴛʜ ᴏʀ ᴡɪᴛʜᴏᴜᴛ ᴄᴀᴘᴛɪᴏɴ)",
             reply_markup=messenger_keyboard(),
         )
-    elif query.data == "admin:back":
+    elif data == "admin:back":
         await query.edit_message_text(
             "⚙️ 𝗕𝗼𝘁 𝗠𝗮𝗻𝗮𝗴𝗲𝗺𝗲𝗻𝘁\n\nꜱᴇʟᴇᴄᴛ ᴀɴ ᴏᴘᴛɪᴏɴ:",
             reply_markup=admin_keyboard(),
@@ -1049,60 +960,48 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def messenger_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-
     if query.from_user.id != ADMIN_ID:
         await query.answer("ᴀᴅᴍɪɴ ᴏɴʟʏ.", show_alert=True)
         return
-
     await query.answer()
 
     if query.data == "messenger:text":
         context.user_data["messenger_mode"] = "text"
         await query.edit_message_text(
             "📝 ꜱᴇɴᴅ ᴛʜᴇ ᴛᴇxᴛ ᴍᴇꜱꜱᴀɢᴇ\n\nᴛʏᴘᴇ ʏᴏᴜʀ ᴍᴇꜱꜱᴀɢᴇ ɴᴏᴡ:",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]
-            ),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]),
         )
     elif query.data == "messenger:photo":
         context.user_data["messenger_mode"] = "photo"
         await query.edit_message_text(
             "🖼️ ꜱᴇɴᴅ ᴛʜᴇ ᴘʜᴏᴛᴏ\n\nʏᴏᴜ ᴄᴀɴ ᴀᴅᴅ ᴀ ᴄᴀᴘᴛɪᴏɴ ᴛᴏᴏ (ᴏᴘᴛɪᴏɴᴀʟ).",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]
-            ),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]),
         )
     elif query.data == "messenger:video":
         context.user_data["messenger_mode"] = "video"
         await query.edit_message_text(
             "🎬 ꜱᴇɴᴅ ᴛʜᴇ ᴠɪᴅᴇᴏ\n\nʏᴏᴜ ᴄᴀɴ ᴀᴅᴅ ᴀ ᴄᴀᴘᴛɪᴏɴ ᴛᴏᴏ (ᴏᴘᴛɪᴏɴᴀʟ).",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]
-            ),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]),
         )
     elif query.data == "messenger:document":
         context.user_data["messenger_mode"] = "document"
         await query.edit_message_text(
             "📄 ꜱᴇɴᴅ ᴛʜᴇ ᴅᴏᴄᴜᴍᴇɴᴛ\n\nʏᴏᴜ ᴄᴀɴ ᴀᴅᴅ ᴀ ᴄᴀᴘᴛɪᴏɴ ᴛᴏᴏ (ᴏᴘᴛɪᴏɴᴀʟ).",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]
-            ),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]),
         )
 
 
 # ============================================================
-# BROADCAST HELPER
+# BROADCAST
 # ============================================================
 
 async def broadcast_to_users(context, message_type, content, caption=""):
     verified = get_verified()
     sent = 0
     failed = 0
-
     for user_id_str in verified.keys():
         try:
             user_id = int(user_id_str)
-
             if message_type == "text":
                 await context.bot.send_message(chat_id=user_id, text=content)
             elif message_type == "photo":
@@ -1111,12 +1010,10 @@ async def broadcast_to_users(context, message_type, content, caption=""):
                 await context.bot.send_video(chat_id=user_id, video=content, caption=caption or None)
             elif message_type == "document":
                 await context.bot.send_document(chat_id=user_id, document=content, caption=caption or None)
-
             sent += 1
         except Exception as error:
             print(f"Broadcast error [{user_id_str}]:", repr(error))
             failed += 1
-
     return sent, failed
 
 
@@ -1127,14 +1024,11 @@ async def broadcast_to_users(context, message_type, content, caption=""):
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     message = update.message
-
     if not user or user.id != ADMIN_ID:
         return
-
     mode = context.user_data.get("messenger_mode")
     if not mode:
         return
-
     context.user_data.pop("messenger_mode", None)
 
     caption = message.caption or ""
@@ -1142,23 +1036,16 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     failed = 0
 
     if mode == "photo" and message.photo:
-        file_id = message.photo[-1].file_id
-        sent, failed = await broadcast_to_users(context, "photo", file_id, caption)
+        sent, failed = await broadcast_to_users(context, "photo", message.photo[-1].file_id, caption)
     elif mode == "video" and message.video:
-        file_id = message.video.file_id
-        sent, failed = await broadcast_to_users(context, "video", file_id, caption)
+        sent, failed = await broadcast_to_users(context, "video", message.video.file_id, caption)
     elif mode == "document" and message.document:
-        file_id = message.document.file_id
-        sent, failed = await broadcast_to_users(context, "document", file_id, caption)
+        sent, failed = await broadcast_to_users(context, "document", message.document.file_id, caption)
     else:
         await message.reply_text("❌ ᴡʀᴏɴɢ ᴍᴇᴅɪᴀ ᴛʏᴘᴇ.")
         return
 
-    await message.reply_text(
-        f"✅ ʙʀᴏᴀᴅᴄᴀꜱᴛ ᴅᴏɴᴇ\n\n"
-        f"📤 ꜱᴇɴᴛ: {sent}\n"
-        f"❌ ꜰᴀɪʟᴇᴅ: {failed}"
-    )
+    await message.reply_text(f"✅ ʙʀᴏᴀᴅᴄᴀꜱᴛ ᴅᴏɴᴇ\n\n📤 ꜱᴇɴᴛ: {sent}\n❌ ꜰᴀɪʟᴇᴅ: {failed}")
 
 
 # ============================================================
@@ -1169,26 +1056,17 @@ async def group_protection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     change = update.my_chat_member
     if not change:
         return
-
     chat = change.chat
     new_member = change.new_chat_member
-
     if chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
         return
-
-    status = new_member.status
-    if status not in ["member", "administrator"]:
+    if new_member.status not in ["member", "administrator"]:
         return
-
     approved = get_approved_groups()
     if chat.id in approved:
         return
-
     try:
-        await context.bot.send_message(
-            chat_id=chat.id,
-            text="❌ ᴛʜɪꜱ ʙᴏᴛ ɪꜱ ɴᴏᴛ ᴀᴘᴘʀᴏᴠᴇᴅ ꜰᴏʀ ᴛʜɪꜱ ɢʀᴏᴜᴘ.",
-        )
+        await context.bot.send_message(chat_id=chat.id, text="❌ ᴛʜɪꜱ ʙᴏᴛ ɪꜱ ɴᴏᴛ ᴀᴘᴘʀᴏᴠᴇᴅ ꜰᴏʀ ᴛʜɪꜱ ɢʀᴏᴜᴘ.")
         await context.bot.leave_chat(chat_id=chat.id)
     except Exception as error:
         print("GROUP PROTECTION ERROR:", repr(error))
@@ -1201,13 +1079,12 @@ async def group_protection(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     message = update.message
-
     if not user or not message:
         return
 
     text = message.text.strip() if message.text else ""
 
-    # ---------- Back button ----------
+    # Back button
     if text in ["🔙 ʙᴀᴄᴋ", "⬅️ ʙᴀᴄᴋ", "Back", "back", "/back"]:
         context.user_data.pop("waiting_type", None)
         context.user_data.pop("messenger_mode", None)
@@ -1217,42 +1094,31 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ---------- Messenger Text Mode (Admin only) ----------
+    # Messenger Text Mode
     if user.id == ADMIN_ID and context.user_data.get("messenger_mode") == "text":
         context.user_data.pop("messenger_mode", None)
         sent, failed = await broadcast_to_users(context, "text", text)
-        await message.reply_text(
-            f"✅ ᴍᴇꜱꜱᴀɢᴇ ꜱᴇɴᴛ\n\n📤 ꜱᴇɴᴛ: {sent}\n❌ ꜰᴀɪʟᴇᴅ: {failed}"
-        )
+        await message.reply_text(f"✅ ᴍᴇꜱꜱᴀɢᴇ ꜱᴇɴᴛ\n\n📤 ꜱᴇɴᴛ: {sent}\n❌ ꜰᴀɪʟᴇᴅ: {failed}")
         return
 
     member = await is_member_of_all_channels(user.id, context)
     if not member:
-        await message.reply_text(
-            "🔐 ᴘʟᴇᴀꜱᴇ ᴊᴏɪɴ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ ᴛᴏ ᴜꜱᴇ ᴛʜɪꜱ ʙᴏᴛ.",
-            reply_markup=channel_join_keyboard(),
-        )
+        await message.reply_text("🔐 ᴘʟᴇᴀꜱᴇ ᴊᴏɪɴ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ ᴛᴏ ᴜꜱᴇ ᴛʜɪꜱ ʙᴏᴛ.", reply_markup=channel_join_keyboard())
         return
 
     if not is_verified(user.id):
-        await message.reply_text(
-            "🔐 ᴘʟᴇᴀꜱᴇ ᴠᴇʀɪꜰʏ ꜰɪʀꜱᴛ.",
-            reply_markup=contact_keyboard(),
-        )
+        await message.reply_text("🔐 ᴘʟᴇᴀꜱᴇ ᴠᴇʀɪꜰʏ ꜰɪʀꜱᴛ.", reply_markup=contact_keyboard())
         return
 
-    # ---------- Lookup buttons ----------
-
+    # Lookup buttons
     if text == "📱 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ":
         context.user_data["waiting_type"] = "number"
         await message.reply_text("📞 ꜱᴇɴᴅ 10-ᴅɪɢɪᴛ ɴᴜᴍʙᴇʀ:")
         return
-
     if text == "🔢 ᴛɢ ᴛᴏ ɴᴜᴍ":
         context.user_data["waiting_type"] = "tg_to_num"
         await message.reply_text("🔢 ꜱᴇɴᴅ ᴛᴇʟᴇɢʀᴀᴍ ᴜꜱᴇʀ ɪᴅ:")
         return
-
     if text == "🪪 ᴀᴀᴅʜᴀʀ":
         if not API_AADHAR:
             await message.reply_text(f"⚠️ ᴀᴀᴅʜᴀʀ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
@@ -1260,7 +1126,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["waiting_type"] = "aadhar"
         await message.reply_text("🪪 ꜱᴇɴᴅ 12-ᴅɪɢɪᴛ ᴀᴀᴅʜᴀʀ ɴᴜᴍʙᴇʀ:")
         return
-
     if text == "💳 ᴘᴀɴ":
         if not API_PAN:
             await message.reply_text(f"⚠️ ᴘᴀɴ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
@@ -1268,7 +1133,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["waiting_type"] = "pan"
         await message.reply_text("💳 ꜱᴇɴᴅ ᴘᴀɴ ɴᴜᴍʙᴇʀ:")
         return
-
     if text == "🏦 ɪꜰꜱᴄ":
         if not API_IFSC:
             await message.reply_text(f"⚠️ ɪꜰꜱᴄ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
@@ -1276,7 +1140,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["waiting_type"] = "ifsc"
         await message.reply_text("🏦 ꜱᴇɴᴅ ɪꜰꜱᴄ ᴄᴏᴅᴇ:")
         return
-
     if text == "📍 ᴘɪɴ ᴄᴏᴅᴇ":
         if not API_PINCODE:
             await message.reply_text(f"⚠️ ᴘɪɴ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
@@ -1284,7 +1147,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["waiting_type"] = "pincode"
         await message.reply_text("📍 ꜱᴇɴᴅ ᴘɪɴ ᴄᴏᴅᴇ:")
         return
-
     if text == "🌐 ɪᴘ":
         if not API_IP:
             await message.reply_text(f"⚠️ ɪᴘ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
@@ -1292,7 +1154,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["waiting_type"] = "ip"
         await message.reply_text("🌐 ꜱᴇɴᴅ ɪᴘ ᴀᴅᴅʀᴇꜱꜱ:")
         return
-
     if text == "📧 ᴇᴍᴀɪʟ":
         if not API_EMAIL:
             await message.reply_text(f"⚠️ ᴇᴍᴀɪʟ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
@@ -1300,7 +1161,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["waiting_type"] = "email"
         await message.reply_text("📧 ꜱᴇɴᴅ ᴇᴍᴀɪʟ ᴀᴅᴅʀᴇꜱꜱ:")
         return
-
     if text == "☁️ ᴡᴇᴀᴛʜᴇʀ":
         if not API_WEATHER:
             await message.reply_text(f"⚠️ ᴡᴇᴀᴛʜᴇʀ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
@@ -1309,73 +1169,57 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text("☁️ ꜱᴇɴᴅ ᴄɪᴛʏ ɴᴀᴍᴇ:")
         return
 
-    # ---------- Other buttons ----------
-
+    # Other buttons
     if text == "👤 ᴍʏ ᴄᴏɴᴛᴀᴄᴛ":
         await show_my_contact(update)
         return
-
     if text == "❓ ʜᴇʟᴘ":
         await show_help(update)
         return
-
     if text == "⚙️ ʙᴏᴛ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ":
         await bot_management(update)
         return
 
-    # ---------- Waiting for input ----------
-
+    # Waiting for input
     waiting = context.user_data.get("waiting_type")
-
     if waiting == "number":
         context.user_data.pop("waiting_type", None)
         await process_number(update, context, text)
         return
-
     if waiting == "tg_to_num":
         context.user_data.pop("waiting_type", None)
         await process_tg_to_num(update, context, text)
         return
-
     if waiting == "aadhar":
         context.user_data.pop("waiting_type", None)
         await process_generic_lookup(update, context, API_AADHAR, text, "Aadhar", "🪪")
         return
-
     if waiting == "pan":
         context.user_data.pop("waiting_type", None)
         await process_generic_lookup(update, context, API_PAN, text, "Pan", "💳")
         return
-
     if waiting == "ifsc":
         context.user_data.pop("waiting_type", None)
         await process_generic_lookup(update, context, API_IFSC, text, "IFSC", "🏦")
         return
-
     if waiting == "pincode":
         context.user_data.pop("waiting_type", None)
         await process_generic_lookup(update, context, API_PINCODE, text, "Pin Code", "📍")
         return
-
     if waiting == "ip":
         context.user_data.pop("waiting_type", None)
         await process_generic_lookup(update, context, API_IP, text, "IP", "🌐")
         return
-
     if waiting == "email":
         context.user_data.pop("waiting_type", None)
         await process_generic_lookup(update, context, API_EMAIL, text, "Email", "📧")
         return
-
     if waiting == "weather":
         context.user_data.pop("waiting_type", None)
         await process_generic_lookup(update, context, API_WEATHER, text, "Weather", "☁️")
         return
 
-    await message.reply_text(
-        "ᴘʟᴇᴀꜱᴇ ᴄʜᴏᴏꜱᴇ ᴀɴ ᴏᴘᴛɪᴏɴ ꜰʀᴏᴍ ᴛʜᴇ ᴍᴇɴᴜ.",
-        reply_markup=main_keyboard(user.id),
-    )
+    await message.reply_text("ᴘʟᴇᴀꜱᴇ ᴄʜᴏᴏꜱᴇ ᴀɴ ᴏᴘᴛɪᴏɴ ꜰʀᴏᴍ ᴛʜᴇ ᴍᴇɴᴜ.", reply_markup=main_keyboard(user.id))
 
 
 # ============================================================
@@ -1393,24 +1237,16 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 def main():
     print("=" * 50)
     print("AKASH OSINT BOT")
-    print("Starting...")
     print("=" * 50)
 
-    health_thread = threading.Thread(target=run_health_server, daemon=True)
-    health_thread.start()
+    threading.Thread(target=run_health_server, daemon=True).start()
 
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("close", close_command))
     app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
-
-    # Media handler for messenger
-    app.add_handler(MessageHandler(
-        filters.PHOTO | filters.VIDEO | filters.Document.ALL,
-        handle_media
-    ))
-
+    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL, handle_media))
     app.add_handler(CallbackQueryHandler(check_joined_callback, pattern="^check_joined$"))
     app.add_handler(CallbackQueryHandler(pagination_callback, pattern=r"^lookup:"))
     app.add_handler(CallbackQueryHandler(messenger_callback, pattern=r"^messenger:"))
