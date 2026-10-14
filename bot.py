@@ -6,6 +6,7 @@ import threading
 from datetime import datetime, timezone
 
 import aiohttp
+import urllib.request
 from flask import Flask
 
 from telegram import (
@@ -61,8 +62,8 @@ API_WEATHER = ""
 
 API_KEY = "DEMO"
 
-RECORDS_PER_PAGE = 3      # Number lookup pagination
-STATS_PER_PAGE = 15       # Stats pagination
+RECORDS_PER_PAGE = 3
+STATS_PER_PAGE = 15
 
 USERS_FILE = "users.json"
 VERIFIED_FILE = "verified.json"
@@ -93,28 +94,113 @@ def run_health_server():
 
 
 # ============================================================
-# JSON HELPERS
+# GIST PERSISTENCE
 # ============================================================
 
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+GIST_ID = os.getenv("GIST_ID", "")
+
+GIST_FILENAME_MAP = {
+    "users.json": "users",
+    "verified.json": "verified",
+    "queries.json": "queries",
+    "approved_groups.json": "approved_groups",
+}
+
+
+def _gist_api_url():
+    return f"https://api.github.com/gists/{GIST_ID}"
+
+
+def _gist_headers():
+    return {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "AkashOsintBot",
+    }
+
+
 def load_json(filename, default):
+    """Load from local file OR GitHub Gist."""
+    key = GIST_FILENAME_MAP.get(filename)
+
+    # Try local first
     try:
-        if not os.path.exists(filename):
-            return default
-        with open(filename, "r", encoding="utf-8") as file:
-            return json.load(file)
+        if os.path.exists(filename):
+            with open(filename, "r", encoding="utf-8") as file:
+                data = json.load(file)
+                if data:
+                    return data
     except Exception as error:
-        print(f"JSON LOAD ERROR [{filename}]:", repr(error))
-        return default
+        print(f"LOCAL LOAD ERROR [{filename}]:", repr(error))
+
+    # Try Gist
+    if GITHUB_TOKEN and GIST_ID and key:
+        try:
+            req = urllib.request.Request(_gist_api_url(), headers=_gist_headers())
+            with urllib.request.urlopen(req, timeout=10) as response:
+                gist_data = json.loads(response.read().decode("utf-8"))
+                files = gist_data.get("files", {})
+                bot_file = files.get("bot_data.json")
+                if bot_file:
+                    content = bot_file.get("content", "{}")
+                    all_data = json.loads(content)
+                    return all_data.get(key, default)
+        except Exception as error:
+            print(f"GIST LOAD ERROR [{filename}]:", repr(error))
+
+    return default
 
 
 def save_json(filename, data):
+    """Save locally AND to Gist."""
+    key = GIST_FILENAME_MAP.get(filename)
+
+    # Save locally
     try:
         with open(filename, "w", encoding="utf-8") as file:
             json.dump(data, file, ensure_ascii=False, indent=2)
-        return True
     except Exception as error:
-        print(f"JSON SAVE ERROR [{filename}]:", repr(error))
-        return False
+        print(f"LOCAL SAVE ERROR [{filename}]:", repr(error))
+
+    # Save to Gist
+    if GITHUB_TOKEN and GIST_ID and key:
+        try:
+            req = urllib.request.Request(_gist_api_url(), headers=_gist_headers())
+            with urllib.request.urlopen(req, timeout=10) as response:
+                gist_data = json.loads(response.read().decode("utf-8"))
+
+            files = gist_data.get("files", {})
+            bot_file = files.get("bot_data.json")
+            current_content = bot_file.get("content", "{}") if bot_file else "{}"
+
+            try:
+                all_data = json.loads(current_content)
+            except json.JSONDecodeError:
+                all_data = {}
+
+            all_data[key] = data
+
+            payload = json.dumps({
+                "files": {
+                    "bot_data.json": {
+                        "content": json.dumps(all_data, ensure_ascii=False, indent=2)
+                    }
+                }
+            }).encode("utf-8")
+
+            req2 = urllib.request.Request(
+                _gist_api_url(),
+                data=payload,
+                headers={**_gist_headers(), "Content-Type": "application/json"},
+                method="PATCH",
+            )
+            with urllib.request.urlopen(req2, timeout=10) as response:
+                print(f"GIST SAVE OK [{filename}]")
+        except Exception as error:
+            print(f"GIST SAVE ERROR [{filename}]:", repr(error))
+
+    return True
 
 
 # ============================================================
@@ -217,18 +303,6 @@ def main_keyboard(user_id):
 
 
 # ============================================================
-# CONTACT KEYBOARD
-# ============================================================
-
-def contact_keyboard():
-    return ReplyKeyboardMarkup(
-        [[KeyboardButton("📱 ꜱʜᴀʀᴇ ᴍʏ ᴄᴏɴᴛᴀᴄᴛ", request_contact=True, style="success")]],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
-
-
-# ============================================================
 # CHANNEL JOIN KEYBOARD
 # ============================================================
 
@@ -257,7 +331,7 @@ async def is_member_of_all_channels(user_id, context):
 
 
 # ============================================================
-# START
+# START (no contact verification)
 # ============================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -276,18 +350,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if not is_verified(user.id):
-        await update.message.reply_text(
-            "🔐 ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ʀᴇQᴜɪʀᴇᴅ.\n\n"
-            "ᴘʟᴇᴀꜱᴇ ꜱʜᴀʀᴇ ʏᴏᴜʀ ᴏᴡɴ ᴛᴇʟᴇɢʀᴀᴍ ᴄᴏɴᴛᴀᴄᴛ.",
-            reply_markup=contact_keyboard(),
-        )
-        return
-
     await update.message.reply_text(
         f"👋 ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴀᴋᴀꜱʜ ᴏꜱɪɴᴛ ʙᴏᴛ.\n\n"
         f"👤 ᴜꜱᴇʀ ɪᴅ: {user.id}\n"
-        f"✅ ʏᴏᴜ ᴀʀᴇ ᴠᴇʀɪꜰɪᴇᴅ!\n\n"
+        f"✅ ᴄʜᴀɴɴᴇʟꜱ ᴠᴇʀɪꜰɪᴇᴅ!\n\n"
         f"ᴄʜᴏᴏꜱᴇ ᴀɴ ᴏᴘᴛɪᴏɴ ꜰʀᴏᴍ ᴛʜᴇ ᴍᴇɴᴜ ʙᴇʟᴏᴡ.",
         reply_markup=main_keyboard(user.id),
     )
@@ -307,7 +373,7 @@ async def close_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
-# CHECK JOINED CALLBACK
+# CHECK JOINED
 # ============================================================
 
 async def check_joined_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -323,42 +389,8 @@ async def check_joined_callback(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    if not is_verified(user.id):
-        await query.edit_message_text("✅ ᴄʜᴀɴɴᴇʟꜱ ᴠᴇʀɪꜰɪᴇᴅ!\n\nɴᴏᴡ ᴘʟᴇᴀꜱᴇ ꜱʜᴀʀᴇ ʏᴏᴜʀ ᴄᴏɴᴛᴀᴄᴛ ᴜꜱɪɴɢ /start")
-        return
-
-    await query.edit_message_text("✅ ᴀʟʟ ᴠᴇʀɪꜰɪᴇᴅ! ᴜꜱᴇ /start ᴛᴏ ᴀᴄᴄᴇꜱꜱ ᴛʜᴇ ʙᴏᴛ.")
-
-
-# ============================================================
-# CONTACT VERIFICATION
-# ============================================================
-
-async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    message = update.message
-
-    if not user or not message or not message.contact:
-        return
-
-    contact = message.contact
-    if contact.user_id != user.id:
-        await message.reply_text("❌ ᴘʟᴇᴀꜱᴇ ꜱʜᴀʀᴇ ʏᴏᴜʀ ᴏᴡɴ ᴛᴇʟᴇɢʀᴀᴍ ᴄᴏɴᴛᴀᴄᴛ.", reply_markup=contact_keyboard())
-        return
-
-    verified = get_verified()
-    verified[str(user.id)] = {
-        "user_id": user.id,
-        "name": user.full_name,
-        "username": user.username,
-        "contact": contact.phone_number,
-        "verified_at": datetime.now(timezone.utc).isoformat(),
-    }
-    save_verified(verified)
-
-    await message.reply_text(
-        "✅ ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟ!\n\nʏᴏᴜ ᴄᴀɴ ɴᴏᴡ ᴜꜱᴇ ᴛʜᴇ ʙᴏᴛ.",
-        reply_markup=main_keyboard(user.id),
+    await query.edit_message_text(
+        "✅ ᴀʟʟ ᴠᴇʀɪꜰɪᴇᴅ! ᴜꜱᴇ /start ᴛᴏ ᴀᴄᴄᴇꜱꜱ ᴛʜᴇ ʙᴏᴛ."
     )
 
 
@@ -376,26 +408,24 @@ async def show_help(update: Update):
 
 
 # ============================================================
-# MY CONTACT
+# MY CONTACT (shows user info from users.json)
 # ============================================================
 
 async def show_my_contact(update: Update):
     user = update.effective_user
-    verified = get_verified()
-    record = verified.get(str(user.id))
+    users = get_users()
+    record = users.get(str(user.id))
 
     if not record:
-        await update.message.reply_text("❌ ʏᴏᴜ ᴀʀᴇ ɴᴏᴛ ᴠᴇʀɪꜰɪᴇᴅ ʏᴇᴛ.", reply_markup=contact_keyboard())
+        await update.message.reply_text("❌ ɴᴏ ᴅᴀᴛᴀ ꜰᴏᴜɴᴅ.")
         return
 
-    contact = record.get("contact")
     await update.message.reply_text(
-        "👤 𝗬𝗼𝘂𝗿 𝗖𝗼𝗻𝘁𝗮𝗰𝘁\n"
+        "👤 𝗬𝗼𝘂𝗿 𝗜𝗻𝗳𝗼\n"
         "━━━━━━━━━━━━━━━━━━\n"
         f"👤 𝗡𝗮𝗺𝗲      • {record.get('name') or 'N/A'}\n"
         f"🆔 𝗨𝘀𝗲𝗿 𝗜𝗗   • {record.get('user_id')}\n"
-        f"🏷️ 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲  • @{record.get('username') or 'N/A'}\n"
-        f"☎️ 𝗖𝗼𝗻𝘁𝗮𝗰𝘁   • {contact or 'N/A'}\n\n"
+        f"🏷️ 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲  • @{record.get('username') or 'N/A'}\n\n"
         f"├ 🛠️ ᴅᴇᴠᴇʟᴏᴘᴇʀ: {DEVELOPER} • 🛰️"
     )
 
@@ -554,7 +584,7 @@ def build_page(records, number, page):
 
 
 # ============================================================
-# PAGINATION KEYBOARD (Number lookup)
+# PAGINATION KEYBOARD
 # ============================================================
 
 def pagination_keyboard(number, page, total):
@@ -573,7 +603,7 @@ def pagination_keyboard(number, page, total):
 
 
 # ============================================================
-# SAVE QUERY (history preserved, last 25 kept)
+# SAVE QUERY
 # ============================================================
 
 def save_query(user, number, query_type="number"):
@@ -586,8 +616,7 @@ def save_query(user, number, query_type="number"):
         "type": query_type,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
-    # Keep last 25 only – older rotate out (not deleted from file until 26th comes)
-    queries = queries[-25:]
+    queries = queries[-100:]
     save_queries(queries)
 
 
@@ -714,7 +743,7 @@ async def process_generic_lookup(update, context, api_url, query_text, title, ic
 
 
 # ============================================================
-# PAGINATION CALLBACK (number lookup)
+# PAGINATION CALLBACK
 # ============================================================
 
 async def pagination_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -803,8 +832,12 @@ async def admin_stats(query, page=0):
     users = get_users()
     verified = get_verified()
     verified_list = list(verified.values())
-    total_verified = len(verified_list)
 
+    # If verified is empty, fall back to users
+    if not verified_list:
+        verified_list = list(users.values())
+
+    total_verified = len(verified_list)
     total_pages = max(1, math.ceil(total_verified / STATS_PER_PAGE))
     page = max(0, min(page, total_pages - 1))
 
@@ -830,7 +863,6 @@ async def admin_stats(query, page=0):
             f'👤 𝗡𝗮𝗺𝗲 • "{record.get("name") or "N/A"}"',
             f'🆔 𝗨𝘀𝗲𝗿 𝗜𝗗 • "{record.get("user_id")}"',
             f'🏷️ 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲 • "{username_text}"',
-            f'☎️ 𝗖𝗼𝗻𝘁𝗮𝗰𝘁 • "{record.get("contact") or "N/A"}"',
             "━━━━━━━━━━━━━━━━━━",
         ])
 
@@ -874,14 +906,11 @@ async def admin_queries(query):
         qtype = item.get("type", "number").upper()
         name = item.get("name") or "N/A"
         user_id = item.get("user_id", "N/A")
-        username = item.get("username")
-        username_text = f"@{username}" if username else "N/A"
 
         lines.extend([
             f"#{index}",
             f"👤 {name}",
             f"🆔 `{user_id}`",
-            f"🏷️ {username_text}",
             f"📞 {qtype} • `{number}`",
             "──────────────",
         ])
@@ -996,10 +1025,10 @@ async def messenger_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ============================================================
 
 async def broadcast_to_users(context, message_type, content, caption=""):
-    verified = get_verified()
+    users = get_users()
     sent = 0
     failed = 0
-    for user_id_str in verified.keys():
+    for user_id_str in users.keys():
         try:
             user_id = int(user_id_str)
             if message_type == "text":
@@ -1104,10 +1133,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     member = await is_member_of_all_channels(user.id, context)
     if not member:
         await message.reply_text("🔐 ᴘʟᴇᴀꜱᴇ ᴊᴏɪɴ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ ᴛᴏ ᴜꜱᴇ ᴛʜɪꜱ ʙᴏᴛ.", reply_markup=channel_join_keyboard())
-        return
-
-    if not is_verified(user.id):
-        await message.reply_text("🔐 ᴘʟᴇᴀꜱᴇ ᴠᴇʀɪꜰʏ ꜰɪʀꜱᴛ.", reply_markup=contact_keyboard())
         return
 
     # Lookup buttons
@@ -1245,7 +1270,6 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("close", close_command))
-    app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL, handle_media))
     app.add_handler(CallbackQueryHandler(check_joined_callback, pattern="^check_joined$"))
     app.add_handler(CallbackQueryHandler(pagination_callback, pattern=r"^lookup:"))
