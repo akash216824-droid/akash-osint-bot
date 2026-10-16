@@ -67,7 +67,7 @@ API_WEATHER = ""
 API_KEY = "DEMO"
 
 RECORDS_PER_PAGE = 3
-STATS_PER_PAGE = 5
+STATS_PER_PAGE = 15
 
 USERS_FILE = "users.json"
 QUERIES_FILE = "queries.json"
