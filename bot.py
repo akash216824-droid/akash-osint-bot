@@ -3,7 +3,7 @@ import json
 import math
 import asyncio
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import aiohttp
 import urllib.request
@@ -42,6 +42,10 @@ ADMIN_ID = 8979291976
 ADMIN_USERNAME = "@AK4SX"
 DEVELOPER = "ᴀᴋᴀꜱʜ ᴏꜱɪɴᴛ"
 
+FREE_CREDITS = 5
+REFERRAL_BONUS = 1
+CREDIT_PER_LOOKUP = 1
+
 # ---------- Channels ----------
 CHANNELS = [
     {"name": "Channel 1", "username": "@AK4SHOSINT", "link": "https://t.me/AK4SHOSINT"},
@@ -66,8 +70,8 @@ RECORDS_PER_PAGE = 3
 STATS_PER_PAGE = 15
 
 USERS_FILE = "users.json"
-VERIFIED_FILE = "verified.json"
 QUERIES_FILE = "queries.json"
+SUBS_FILE = "subscriptions.json"
 APPROVED_GROUPS_FILE = "approved_groups.json"
 
 
@@ -102,8 +106,8 @@ GIST_ID = os.getenv("GIST_ID", "")
 
 GIST_FILENAME_MAP = {
     "users.json": "users",
-    "verified.json": "verified",
     "queries.json": "queries",
+    "subscriptions.json": "subscriptions",
     "approved_groups.json": "approved_groups",
 }
 
@@ -121,10 +125,8 @@ def _gist_headers():
 
 
 def load_json(filename, default):
-    """Load from local file OR GitHub Gist."""
     key = GIST_FILENAME_MAP.get(filename)
 
-    # Try local first
     try:
         if os.path.exists(filename):
             with open(filename, "r", encoding="utf-8") as file:
@@ -134,7 +136,6 @@ def load_json(filename, default):
     except Exception as error:
         print(f"LOCAL LOAD ERROR [{filename}]:", repr(error))
 
-    # Try Gist
     if GITHUB_TOKEN and GIST_ID and key:
         try:
             req = urllib.request.Request(_gist_api_url(), headers=_gist_headers())
@@ -153,17 +154,14 @@ def load_json(filename, default):
 
 
 def save_json(filename, data):
-    """Save locally AND to Gist."""
     key = GIST_FILENAME_MAP.get(filename)
 
-    # Save locally
     try:
         with open(filename, "w", encoding="utf-8") as file:
             json.dump(data, file, ensure_ascii=False, indent=2)
     except Exception as error:
         print(f"LOCAL SAVE ERROR [{filename}]:", repr(error))
 
-    # Save to Gist
     if GITHUB_TOKEN and GIST_ID and key:
         try:
             req = urllib.request.Request(_gist_api_url(), headers=_gist_headers())
@@ -204,7 +202,7 @@ def save_json(filename, data):
 
 
 # ============================================================
-# USER DATA
+# DATA GETTERS
 # ============================================================
 
 def get_users():
@@ -215,20 +213,20 @@ def save_users(data):
     save_json(USERS_FILE, data)
 
 
-def get_verified():
-    return load_json(VERIFIED_FILE, {})
-
-
-def save_verified(data):
-    save_json(VERIFIED_FILE, data)
-
-
 def get_queries():
     return load_json(QUERIES_FILE, [])
 
 
 def save_queries(data):
     save_json(QUERIES_FILE, data)
+
+
+def get_subscriptions():
+    return load_json(SUBS_FILE, {})
+
+
+def save_subscriptions(data):
+    save_json(SUBS_FILE, data)
 
 
 def get_approved_groups():
@@ -240,30 +238,103 @@ def save_approved_groups(data):
 
 
 # ============================================================
-# USER REGISTRATION
+# USER REGISTRATION + CREDIT SYSTEM
 # ============================================================
 
-def register_user(user):
+def register_user(user, referred_by=None):
     users = get_users()
-    user_id = str(user.id)
+    uid = str(user.id)
 
-    users[user_id] = {
-        "user_id": user.id,
-        "name": user.full_name,
-        "username": user.username,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
+    if uid not in users:
+        users[uid] = {
+            "user_id": user.id,
+            "name": user.full_name,
+            "username": user.username,
+            "credits": FREE_CREDITS,
+            "referrals": 0,
+            "referred_by": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        save_users(users)
 
+        # Referral bonus
+        if referred_by and str(referred_by) in users and str(referred_by) != uid:
+            users[uid]["referred_by"] = int(referred_by)
+            users[str(referred_by)]["credits"] = users[str(referred_by)].get("credits", 0) + REFERRAL_BONUS
+            users[str(referred_by)]["referrals"] = users[str(referred_by)].get("referrals", 0) + 1
+            save_users(users)
+
+    else:
+        # Update name/username
+        users[uid]["name"] = user.full_name
+        users[uid]["username"] = user.username
+        save_users(users)
+
+    return users[uid]
+
+
+def get_user(user_id):
+    users = get_users()
+    return users.get(str(user_id))
+
+
+def update_credits(user_id, delta):
+    users = get_users()
+    uid = str(user_id)
+    if uid not in users:
+        return
+    users[uid]["credits"] = max(0, users[uid].get("credits", 0) + delta)
     save_users(users)
 
 
-def is_verified(user_id):
-    verified = get_verified()
-    return str(user_id) in verified
+def has_subscription(user_id):
+    subs = get_subscriptions()
+    uid = str(user_id)
+    if uid not in subs:
+        return False
+    expiry_str = subs[uid].get("expires_at")
+    if not expiry_str:
+        return False
+    try:
+        expiry = datetime.fromisoformat(expiry_str)
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        return expiry > datetime.now(timezone.utc)
+    except Exception:
+        return False
+
+
+def has_access(user_id):
+    if user_id == ADMIN_ID:
+        return True
+    if has_subscription(user_id):
+        return True
+    user = get_user(user_id)
+    if user and user.get("credits", 0) > 0:
+        return True
+    return False
+
+
+def deduct_credit(user_id):
+    """Deduct 1 credit only if user has no subscription."""
+    if user_id == ADMIN_ID:
+        return
+    if has_subscription(user_id):
+        return
+    update_credits(user_id, -CREDIT_PER_LOOKUP)
+
+
+def refund_credit(user_id):
+    """Refund 1 credit if deducted but data not found."""
+    if user_id == ADMIN_ID:
+        return
+    if has_subscription(user_id):
+        return
+    update_credits(user_id, +CREDIT_PER_LOOKUP)
 
 
 # ============================================================
-# MAIN KEYBOARD
+# KEYBOARDS
 # ============================================================
 
 def main_keyboard(user_id):
@@ -286,7 +357,11 @@ def main_keyboard(user_id):
         ],
         [
             KeyboardButton("☁️ ᴡᴇᴀᴛʜᴇʀ", style="primary"),
-            KeyboardButton("👤 ᴍʏ ᴄᴏɴᴛᴀᴄᴛ", style="primary"),
+            KeyboardButton("👤 ᴍʏ ᴀᴄᴄᴏᴜɴᴛ", style="primary"),
+        ],
+        [
+            KeyboardButton("🔗 ʀᴇꜰᴇʀʀᴀʟ", style="primary"),
+            KeyboardButton("💳 ʙᴜʏ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ", style="success"),
         ],
     ]
 
@@ -295,16 +370,8 @@ def main_keyboard(user_id):
     else:
         rows.append([KeyboardButton("❓ ʜᴇʟᴘ", style="success")])
 
-    return ReplyKeyboardMarkup(
-        rows,
-        resize_keyboard=True,
-        is_persistent=True,
-    )
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
 
-
-# ============================================================
-# CHANNEL JOIN KEYBOARD
-# ============================================================
 
 def channel_join_keyboard():
     rows = []
@@ -312,6 +379,50 @@ def channel_join_keyboard():
         rows.append([InlineKeyboardButton(f"📢 ᴊᴏɪɴ {ch['name']}", url=ch["link"], style="primary")])
     rows.append([InlineKeyboardButton("✅ ɪ ʜᴀᴠᴇ ᴊᴏɪɴᴇᴅ", callback_data="check_joined", style="success")])
     return InlineKeyboardMarkup(rows)
+
+
+def buy_subscription_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("💳 ʙᴜʏ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ", url=f"https://t.me/{ADMIN_USERNAME.lstrip('@')}", style="success")],
+    ])
+
+
+def pagination_keyboard(number, page, total):
+    total_pages = max(1, math.ceil(total / RECORDS_PER_PAGE))
+    buttons = []
+    if page > 0:
+        buttons.append(InlineKeyboardButton("◀️ ᴘʀᴇᴠɪᴏᴜꜱ", callback_data=f"lookup:{number}:{page - 1}", style="primary"))
+    buttons.append(InlineKeyboardButton(f"📄 {page + 1}/{total_pages}", callback_data="lookup:page", style="success"))
+    if page < total_pages - 1:
+        buttons.append(InlineKeyboardButton("ɴᴇxᴛ ▶️", callback_data=f"lookup:{number}:{page + 1}", style="primary"))
+    return InlineKeyboardMarkup([buttons])
+
+
+def admin_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📊 ꜱᴛᴀᴛꜱ", callback_data="admin:stats", style="primary"),
+            InlineKeyboardButton("🔎 Qᴜᴇʀʏꜱᴄᴏᴘᴇ", callback_data="admin:queries", style="primary"),
+        ],
+        [
+            InlineKeyboardButton("💰 ɢɪᴠᴇ ᴄʀᴇᴅɪᴛ", callback_data="admin:give_credit", style="success"),
+            InlineKeyboardButton("💎 ɢɪᴠᴇ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ", callback_data="admin:give_sub", style="success"),
+        ],
+        [InlineKeyboardButton("📤 ʙᴏᴛ ᴍᴇꜱꜱᴇɴɢᴇʀ", callback_data="admin:messenger", style="primary")],
+        [InlineKeyboardButton("🗑️ ᴄʟᴇᴀʀ Qᴜᴇʀʏꜱᴄᴏᴘᴇ", callback_data="admin:clear_queries", style="danger")],
+    ])
+
+
+def messenger_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📝 ᴛᴇxᴛ ᴍᴇꜱꜱᴀɢᴇ", callback_data="messenger:text", style="primary")],
+        [
+            InlineKeyboardButton("🖼️ ᴘʜᴏᴛᴏ", callback_data="messenger:photo", style="primary"),
+            InlineKeyboardButton("🎬 ᴠɪᴅᴇᴏ", callback_data="messenger:video", style="primary"),
+        ],
+        [InlineKeyboardButton("📄 ᴅᴏᴄᴜᴍᴇɴᴛ", callback_data="messenger:document", style="primary")],
+        [InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="danger")],
+    ])
 
 
 # ============================================================
@@ -331,7 +442,7 @@ async def is_member_of_all_channels(user_id, context):
 
 
 # ============================================================
-# START (no contact verification)
+# START
 # ============================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -339,7 +450,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user:
         return
 
-    register_user(user)
+    referred_by = None
+    if context.args and context.args[0].isdigit():
+        referred_by = int(context.args[0])
+
+    user_data = register_user(user, referred_by)
 
     member = await is_member_of_all_channels(user.id, context)
     if not member:
@@ -350,11 +465,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    credits = user_data.get("credits", 0)
+    sub_status = "✅ ᴀᴄᴛɪᴠᴇ" if has_subscription(user.id) else "❌ ɴᴏɴᴇ"
+
     await update.message.reply_text(
         f"👋 ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴀᴋᴀꜱʜ ᴏꜱɪɴᴛ ʙᴏᴛ.\n\n"
         f"👤 ᴜꜱᴇʀ ɪᴅ: {user.id}\n"
-        f"✅ ᴄʜᴀɴɴᴇʟꜱ ᴠᴇʀɪꜰɪᴇᴅ!\n\n"
-        f"ᴄʜᴏᴏꜱᴇ ᴀɴ ᴏᴘᴛɪᴏɴ ꜰʀᴏᴍ ᴛʜᴇ ᴍᴇɴᴜ ʙᴇʟᴏᴡ.",
+        f"💰 ᴄʀᴇᴅɪᴛꜱ: {credits}\n"
+        f"💎 ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ: {sub_status}\n\n"
+        f"ᴄʜᴏᴏꜱᴇ ᴀɴ ᴏᴘᴛɪᴏɴ ꜰʀᴏᴍ ᴛʜᴇ ᴍᴇɴᴜ.",
         reply_markup=main_keyboard(user.id),
     )
 
@@ -367,7 +486,7 @@ async def close_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("waiting_type", None)
     context.user_data.pop("messenger_mode", None)
     await update.message.reply_text(
-        "🔙 ᴋᴇʏʙᴏᴀʀᴅ ʜɪᴅᴅᴇɴ.\n\nꜱᴇɴᴅ /start ᴛᴏ ꜱʜᴏᴡ ᴛʜᴇ ᴍᴇɴᴜ ᴀɢᴀɪɴ.",
+        "🔙 ᴋᴇʏʙᴏᴀʀᴅ ʜɪᴅᴅᴇɴ.",
         reply_markup=ReplyKeyboardRemove(),
     )
 
@@ -389,9 +508,7 @@ async def check_joined_callback(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    await query.edit_message_text(
-        "✅ ᴀʟʟ ᴠᴇʀɪꜰɪᴇᴅ! ᴜꜱᴇ /start ᴛᴏ ᴀᴄᴄᴇꜱꜱ ᴛʜᴇ ʙᴏᴛ."
-    )
+    await query.edit_message_text("✅ ᴀʟʟ ᴠᴇʀɪꜰɪᴇᴅ! ᴜꜱᴇ /start ᴛᴏ ᴀᴄᴄᴇꜱꜱ ᴛʜᴇ ʙᴏᴛ.")
 
 
 # ============================================================
@@ -408,30 +525,75 @@ async def show_help(update: Update):
 
 
 # ============================================================
-# MY CONTACT (shows user info from users.json)
+# MY ACCOUNT
 # ============================================================
 
-async def show_my_contact(update: Update):
+async def show_my_account(update: Update):
     user = update.effective_user
-    users = get_users()
-    record = users.get(str(user.id))
+    user_data = get_user(user.id) or {}
 
-    if not record:
-        await update.message.reply_text("❌ ɴᴏ ᴅᴀᴛᴀ ꜰᴏᴜɴᴅ.")
-        return
+    credits = user_data.get("credits", 0)
+    referrals = user_data.get("referrals", 0)
+    sub_status = "✅ ᴀᴄᴛɪᴠᴇ" if has_subscription(user.id) else "❌ ɴᴏɴᴇ"
+
+    sub_expiry = ""
+    if has_subscription(user.id):
+        subs = get_subscriptions()
+        expiry_str = subs.get(str(user.id), {}).get("expires_at", "")
+        if expiry_str:
+            try:
+                expiry = datetime.fromisoformat(expiry_str)
+                sub_expiry = f"\n📅 ᴇxᴘɪʀᴇꜱ: {expiry.strftime('%d-%m-%Y')}"
+            except Exception:
+                pass
 
     await update.message.reply_text(
-        "👤 𝗬𝗼𝘂𝗿 𝗜𝗻𝗳𝗼\n"
+        "👤 𝗬𝗼𝘂𝗿 𝗔𝗰𝗰𝗼𝘂𝗻𝘁\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        f"👤 𝗡𝗮𝗺𝗲      • {record.get('name') or 'N/A'}\n"
-        f"🆔 𝗨𝘀𝗲𝗿 𝗜𝗗   • {record.get('user_id')}\n"
-        f"🏷️ 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲  • @{record.get('username') or 'N/A'}\n\n"
+        f"👤 𝗡𝗮𝗺𝗲      • {user_data.get('name') or 'N/A'}\n"
+        f"🆔 𝗨𝘀𝗲𝗿 𝗜𝗗   • {user.id}\n"
+        f"🏷️ 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲  • @{user_data.get('username') or 'N/A'}\n"
+        f"💰 ᴄʀᴇᴅɪᴛꜱ    • {credits}\n"
+        f"👥 ʀᴇꜰᴇʀʀᴀʟꜱ • {referrals}\n"
+        f"💎 ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ • {sub_status}{sub_expiry}\n\n"
         f"├ 🛠️ ᴅᴇᴠᴇʟᴏᴘᴇʀ: {DEVELOPER} • 🛰️"
     )
 
 
 # ============================================================
-# NUMBER NORMALIZATION
+# REFERRAL
+# ============================================================
+
+async def show_referral(update: Update, context):
+    user = update.effective_user
+    bot_username = context.bot.username
+    link = f"https://t.me/{bot_username}?start={user.id}"
+
+    await update.message.reply_text(
+        "🔗 𝗬𝗼𝘂𝗿 𝗥𝗲𝗳𝗲𝗿𝗿𝗮𝗹 𝗟𝗶𝗻𝗸\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        f"{link}\n\n"
+        f"💰 ᴇᴀʀɴ {REFERRAL_BONUS} ᴄʀᴇᴅɪᴛ ᴘᴇʀ ʀᴇꜰᴇʀʀᴀʟ!"
+    )
+
+
+# ============================================================
+# BUY SUBSCRIPTION
+# ============================================================
+
+async def show_buy_subscription(update: Update):
+    await update.message.reply_text(
+        "𝑺𝒖𝒃𝒔𝒄𝒓𝒊𝒑𝒕𝒊𝒐𝒏 𝑹𝒆𝒒𝒖𝒊𝒓𝒆𝒅?\n\n"
+        "𝑻𝒐 𝒑𝒖𝒓𝒄𝒉𝒂𝒔𝒆 𝒂 𝒑𝒍𝒂𝒏, 𝒂𝒄𝒕𝒊𝒗𝒂𝒕𝒆 𝒚𝒐𝒖𝒓 "
+        "𝒔𝒖𝒃𝒔𝒄𝒓𝒊𝒑𝒕𝒊𝒐𝒏 𝒐𝒓 𝒈𝒆𝒕 𝒑𝒍𝒂𝒏-𝒓𝒆𝒍𝒂𝒕𝒆𝒅 "
+        "𝒂𝒔𝒔𝒊𝒔𝒕𝒂𝒏𝒄𝒆, 𝒑𝒍𝒆𝒂𝒔𝒆 𝒄𝒐𝒏𝒕𝒂𝒄𝒕 𝒕𝒉𝒆 𝒂𝒅𝒎𝒊𝒏.\n\n"
+        f"👨🏻‍💻 𝑨𝒅𝒎𝒊𝒏 ~ {ADMIN_USERNAME}",
+        reply_markup=buy_subscription_keyboard(),
+    )
+
+
+# ============================================================
+# NORMALIZE NUMBER
 # ============================================================
 
 def clean_number(text):
@@ -460,7 +622,7 @@ async def call_api(url, params):
                 print("=" * 50)
                 print("API URL:", url)
                 print("API STATUS:", response.status)
-                print("API RESPONSE:", raw[:3000])
+                print("API RESPONSE:", raw[:2000])
                 print("=" * 50)
                 if response.status != 200:
                     return None, f"HTTP {response.status}"
@@ -475,10 +637,6 @@ async def call_api(url, params):
         return None, str(error)
 
 
-# ============================================================
-# RECORD EXTRACT
-# ============================================================
-
 def extract_records(data):
     if not isinstance(data, dict):
         return []
@@ -491,115 +649,6 @@ def extract_records(data):
     if any(key in data for key in ["name", "mobile", "phone", "phoneNumber"]):
         return [data]
     return []
-
-
-# ============================================================
-# SAFE RECORD
-# ============================================================
-
-def make_safe_record(record):
-    if not isinstance(record, dict):
-        return {
-            "aadhar": "N/A", "mobile": "N/A", "name": "N/A",
-            "father": "N/A", "address": "N/A",
-            "alt_mobile": "N/A", "circle": "N/A", "email": "N/A",
-        }
-
-    mobile = record.get("mobile") or record.get("phone") or record.get("phoneNumber")
-    name = record.get("name") or record.get("full_name") or record.get("fullName")
-    father = record.get("father") or record.get("father_name") or record.get("fatherName")
-    address = record.get("address")
-    alternate = (
-        record.get("alt_mobile") or record.get("alternate")
-        or record.get("alternate_mobile") or record.get("alternateMobile")
-    )
-    aadhar = record.get("aadhar") or record.get("aadhaar") or record.get("aadhaar_number")
-    circle = (
-        record.get("circle") or record.get("operator_circle")
-        or record.get("region") or "N/A"
-    )
-    circle = str(circle).replace("&amp;", "&")
-    email = record.get("email") or record.get("Email") or None
-
-    return {
-        "aadhar": str(aadhar) if aadhar else "N/A",
-        "mobile": str(mobile) if mobile else "N/A",
-        "name": str(name) if name else "N/A",
-        "father": str(father) if father else "N/A",
-        "address": str(address) if address else "N/A",
-        "alt_mobile": str(alternate) if alternate else "N/A",
-        "circle": circle,
-        "email": str(email) if email else "N/A",
-    }
-
-
-# ============================================================
-# FORMAT ONE RECORD
-# ============================================================
-
-def format_single_record(record, index, total):
-    return (
-        f"👤 ʀᴇᴄᴏʀᴅ {index}/{total}\n"
-        f"├🪪 ᴀᴀᴅʜᴀᴀʀ: {record['aadhar']}\n"
-        f"├📱 ᴍᴏʙɪʟᴇ: {record['mobile']}\n"
-        f"├👤 ɴᴀᴍᴇ: {record['name']}\n"
-        f"├👨 ꜰᴀᴛʜᴇʀ: {record['father']}\n"
-        f"├🏠 ᴀᴅᴅʀᴇꜱꜱ: {record['address']}\n"
-        f"├📲 ᴀʟᴛ ᴍᴏʙɪʟᴇ: {record['alt_mobile']}\n"
-        f"└📡 ᴄɪʀᴄʟᴇ: {record['circle']}\n"
-        f"━━━━━━━━━━━━━━━━━━"
-    )
-
-
-# ============================================================
-# BUILD PAGE
-# ============================================================
-
-def build_page(records, number, page):
-    total = len(records)
-    total_pages = max(1, math.ceil(total / RECORDS_PER_PAGE))
-    page = max(0, min(page, total_pages - 1))
-
-    start = page * RECORDS_PER_PAGE
-    end = start + RECORDS_PER_PAGE
-    page_records = records[start:end]
-
-    lines = [
-        "📋 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ",
-        "━━━━━━━━━━━━━━━━━━",
-        f"📲ɴᴜᴍʙᴇʀ: {number}",
-        f"📊 ᴛᴏᴛᴀʟ ʀᴇᴄᴏʀᴅꜱ: {total}",
-        f"📄 ᴘᴀɢᴇ: {page + 1}/{total_pages}",
-        "🚀 ꜱᴛᴀᴛᴜꜱ: ꜱᴜᴄᴄᴇꜱꜱ",
-        "━━━━━━━━━━━━━━━━━━",
-        "",
-    ]
-
-    for position, record in enumerate(page_records, start=start + 1):
-        lines.append(format_single_record(record, position, total))
-        lines.append("")
-
-    lines.append(f"🛠️ ᴅᴇᴠᴇʟᴏᴘᴇʀ: {DEVELOPER} • 🛰️")
-    return "\n".join(lines)
-
-
-# ============================================================
-# PAGINATION KEYBOARD
-# ============================================================
-
-def pagination_keyboard(number, page, total):
-    total_pages = max(1, math.ceil(total / RECORDS_PER_PAGE))
-    buttons = []
-
-    if page > 0:
-        buttons.append(InlineKeyboardButton("◀️ ᴘʀᴇᴠɪᴏᴜꜱ", callback_data=f"lookup:{number}:{page - 1}", style="primary"))
-
-    buttons.append(InlineKeyboardButton(f"📄 {page + 1}/{total_pages}", callback_data="lookup:page", style="success"))
-
-    if page < total_pages - 1:
-        buttons.append(InlineKeyboardButton("ɴᴇxᴛ ▶️", callback_data=f"lookup:{number}:{page + 1}", style="primary"))
-
-    return InlineKeyboardMarkup([buttons])
 
 
 # ============================================================
@@ -621,6 +670,108 @@ def save_query(user, number, query_type="number"):
 
 
 # ============================================================
+# SUBSCRIPTION REQUIRED MESSAGE
+# ============================================================
+
+SUBSCRIPTION_MSG = (
+    "𝑺𝒖𝒃𝒔𝒄𝒓𝒊𝒑𝒕𝒊𝒐𝒏 𝑹𝒆𝒒𝒖𝒊𝒓𝒆𝒅?\n\n"
+    "𝑻𝒐 𝒑𝒖𝒓𝒄𝒉𝒂𝒔𝒆 𝒂 𝒑𝒍𝒂𝒏, 𝒂𝒄𝒕𝒊𝒗𝒂𝒕𝒆 𝒚𝒐𝒖𝒓 "
+    "𝒔𝒖𝒃𝒔𝒄𝒓𝒊𝒑𝒕𝒊𝒐𝒏 𝒐𝒓 𝒈𝒆𝒕 𝒑𝒍𝒂𝒏-𝒓𝒆𝒍𝒂𝒕𝒆𝒅 "
+    "𝒂𝒔𝒔𝒊𝒔𝒕𝒂𝒏𝒄𝒆, 𝒑𝒍𝒆𝒂𝒔𝒆 𝒄𝒐𝒏𝒕𝒂𝒄𝒕 𝒕𝒉𝒆 𝒂𝒅𝒎𝒊𝒏.\n\n"
+    f"👨🏻‍💻 𝑨𝒅𝒎𝒊𝒏 ~ {ADMIN_USERNAME}"
+)
+
+
+# ============================================================
+# FORMAT NUMBER RECORD
+# ============================================================
+
+def make_safe_record(record):
+    if not isinstance(record, dict):
+        return {"aadhar": "N/A", "mobile": "N/A", "name": "N/A",
+                "father": "N/A", "address": "N/A", "alt_mobile": "N/A",
+                "circle": "N/A", "email": "N/A"}
+
+    mobile = record.get("mobile") or record.get("phone") or record.get("phoneNumber")
+    name = record.get("name") or record.get("full_name") or record.get("fullName")
+    father = record.get("father") or record.get("father_name") or record.get("fatherName")
+    address = record.get("address")
+    alternate = (record.get("alt_mobile") or record.get("alternate")
+                 or record.get("alternate_mobile") or record.get("alternateMobile"))
+    aadhar = record.get("aadhar") or record.get("aadhaar") or record.get("aadhaar_number")
+    circle = record.get("circle") or record.get("operator_circle") or record.get("region") or "N/A"
+    circle = str(circle).replace("&amp;", "&")
+    email = record.get("email") or record.get("Email") or None
+
+    return {
+        "aadhar": str(aadhar) if aadhar else "N/A",
+        "mobile": str(mobile) if mobile else "N/A",
+        "name": str(name) if name else "N/A",
+        "father": str(father) if father else "N/A",
+        "address": str(address) if address else "N/A",
+        "alt_mobile": str(alternate) if alternate else "N/A",
+        "circle": circle,
+        "email": str(email) if email else "N/A",
+    }
+
+
+def format_single_record(record, index, total):
+    return (
+        f"👤 ʀᴇᴄᴏʀᴅ {index}/{total}\n"
+        f"├🪪 ᴀᴀᴅʜᴀᴀʀ: {record['aadhar']}\n"
+        f"├📱 ᴍᴏʙɪʟᴇ: {record['mobile']}\n"
+        f"├👤 ɴᴀᴍᴇ: {record['name']}\n"
+        f"├👨 ꜰᴀᴛʜᴇʀ: {record['father']}\n"
+        f"├🏠 ᴀᴅᴅʀᴇꜱꜱ: {record['address']}\n"
+        f"├📲 ᴀʟᴛ ᴍᴏʙɪʟᴇ: {record['alt_mobile']}\n"
+        f"└📡 ᴄɪʀᴄʟᴇ: {record['circle']}\n"
+        f"━━━━━━━━━━━━━━━━━━"
+    )
+
+
+def build_page(records, number, page):
+    total = len(records)
+    total_pages = max(1, math.ceil(total / RECORDS_PER_PAGE))
+    page = max(0, min(page, total_pages - 1))
+    start = page * RECORDS_PER_PAGE
+    end = start + RECORDS_PER_PAGE
+    page_records = records[start:end]
+
+    lines = [
+        "📋 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ",
+        "━━━━━━━━━━━━━━━━━━",
+        f"📲ɴᴜᴍʙᴇʀ: {number}",
+        f"📊 ᴛᴏᴛᴀʟ ʀᴇᴄᴏʀᴅꜱ: {total}",
+        f"📄 ᴘᴀɢᴇ: {page + 1}/{total_pages}",
+        "🚀 ꜱᴛᴀᴛᴜꜱ: ꜱᴜᴄᴄᴇꜱꜱ",
+        "━━━━━━━━━━━━━━━━━━",
+        "",
+    ]
+    for position, record in enumerate(page_records, start=start + 1):
+        lines.append(format_single_record(record, position, total))
+        lines.append("")
+    lines.append(f"🛠️ ᴅᴇᴠᴇʟᴏᴘᴇʀ: {DEVELOPER} • 🛰️")
+    return "\n".join(lines)
+
+
+# ============================================================
+# CHECK ACCESS (credit/subscription check)
+# ============================================================
+
+async def require_access(update, context):
+    """Return True if user has access, else send subscription message."""
+    user = update.effective_user
+    if has_access(user.id):
+        return True
+
+    await update.message.reply_text(
+        SUBSCRIPTION_MSG,
+        reply_markup=buy_subscription_keyboard(),
+    )
+    return False
+
+
+# ============================================================
 # NUMBER LOOKUP
 # ============================================================
 
@@ -632,6 +783,10 @@ async def process_number(update, context, number):
         await update.message.reply_text("❌ ᴘʟᴇᴀꜱᴇ ꜱᴇɴᴅ ᴀ ᴠᴀʟɪᴅ 10-ᴅɪɢɪᴛ ᴍᴏʙɪʟᴇ ɴᴜᴍʙᴇʀ.")
         return
 
+    # Deduct credit
+    if user.id != ADMIN_ID and not has_subscription(user.id):
+        deduct_credit(user.id)
+
     save_query(user, clean, "number")
     searching = await update.message.reply_text("🔎 ꜱᴇᴀʀᴄʜɪɴɢ...")
 
@@ -639,33 +794,34 @@ async def process_number(update, context, number):
     data, error = await call_api(API_NUMBER, params)
 
     if error:
-        await searching.edit_text(f"❌ ᴀᴘɪ ᴇʀʀᴏʀ: {error}")
+        refund_credit(user.id)
+        await searching.edit_text(f"❌ ᴀᴘɪ ᴇʀʀᴏʀ: {error}\n\n💰 ᴄʀᴇᴅɪᴛ ʀᴇꜰᴜɴᴅᴇᴅ.")
         return
 
     records = extract_records(data)
     safe_records = [make_safe_record(record) for record in records]
 
     if not safe_records:
+        refund_credit(user.id)
         await searching.edit_text(
             "📋 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ\n"
             "━━━━━━━━━━━━━━━━━━\n"
             f"📲ɴᴜᴍʙᴇʀ: {clean}\n"
             "📊 ᴛᴏᴛᴀʟ ʀᴇᴄᴏʀᴅꜱ: 0\n"
-            "🚀 ꜱᴛᴀᴛᴜꜱ: ɴᴏ ᴅᴀᴛᴀ ꜰᴏᴜɴᴅ"
+            "🚀 ꜱᴛᴀᴛᴜꜱ: ɴᴏ ᴅᴀᴛᴀ ꜰᴏᴜɴᴅ\n\n"
+            "💰 ᴄʀᴇᴅɪᴛ ʀᴇꜰᴜɴᴅᴇᴅ."
         )
         return
 
     context.user_data["lookup_records"] = safe_records
     context.user_data["lookup_number"] = clean
-
     text = build_page(safe_records, clean, 0)
     keyboard = pagination_keyboard(clean, 0, len(safe_records))
-
     await searching.edit_text(text, reply_markup=keyboard)
 
 
 # ============================================================
-# TG TO NUM LOOKUP
+# TG TO NUM
 # ============================================================
 
 async def process_tg_to_num(update, context, tg_id):
@@ -676,6 +832,9 @@ async def process_tg_to_num(update, context, tg_id):
         await update.message.reply_text("❌ ᴘʟᴇᴀꜱᴇ ꜱᴇɴᴅ ᴀ ᴠᴀʟɪᴅ ᴛᴇʟᴇɢʀᴀᴍ ᴜꜱᴇʀ ɪᴅ.")
         return
 
+    if user.id != ADMIN_ID and not has_subscription(user.id):
+        deduct_credit(user.id)
+
     save_query(user, clean, "tg_to_num")
     searching = await update.message.reply_text("🔎 ꜱᴇᴀʀᴄʜɪɴɢ...")
 
@@ -683,11 +842,13 @@ async def process_tg_to_num(update, context, tg_id):
     data, error = await call_api(API_TG_TO_NUM, params)
 
     if error:
-        await searching.edit_text(f"❌ ᴀᴘɪ ᴇʀʀᴏʀ: {error}")
+        refund_credit(user.id)
+        await searching.edit_text(f"❌ ᴀᴘɪ ᴇʀʀᴏʀ: {error}\n\n💰 ᴄʀᴇᴅɪᴛ ʀᴇꜰᴜɴᴅᴇᴅ.")
         return
 
     if not isinstance(data, dict) or "Telegram ID" not in data:
-        await searching.edit_text("🔎 𝗡𝗼 𝗗𝗮𝘁𝗮 𝗙𝗼𝘂𝗻𝗱")
+        refund_credit(user.id)
+        await searching.edit_text("🔎 𝗡𝗼 𝗗𝗮𝘁𝗮 𝗙𝗼𝘂𝗻𝗱\n\n💰 ᴄʀᴇᴅɪᴛ ʀᴇꜰᴜɴᴅᴇᴅ.")
         return
 
     text = (
@@ -705,11 +866,15 @@ async def process_tg_to_num(update, context, tg_id):
 # ============================================================
 
 async def process_generic_lookup(update, context, api_url, query_text, title, icon):
+    user = update.effective_user
+
     if not api_url:
         await update.message.reply_text(f"⚠️ {icon} {title} ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
         return
 
-    user = update.effective_user
+    if user.id != ADMIN_ID and not has_subscription(user.id):
+        deduct_credit(user.id)
+
     save_query(user, query_text, title.lower())
     searching = await update.message.reply_text(f"🔎 ꜱᴇᴀʀᴄʜɪɴɢ {title}...")
 
@@ -717,12 +882,14 @@ async def process_generic_lookup(update, context, api_url, query_text, title, ic
     data, error = await call_api(api_url, params)
 
     if error:
-        await searching.edit_text(f"❌ ᴀᴘɪ ᴇʀʀᴏʀ: {error}")
+        refund_credit(user.id)
+        await searching.edit_text(f"❌ ᴀᴘɪ ᴇʀʀᴏʀ: {error}\n\n💰 ᴄʀᴇᴅɪᴛ ʀᴇꜰᴜɴᴅᴇᴅ.")
         return
 
     records = extract_records(data)
     if not records:
-        await searching.edit_text(f"{icon} 𝗡𝗼 𝗗𝗮𝘁𝗮 𝗙𝗼𝘂𝗻𝗱")
+        refund_credit(user.id)
+        await searching.edit_text(f"{icon} 𝗡𝗼 𝗗𝗮𝘁𝗮 𝗙𝗼𝘂𝗻𝗱\n\n💰 ᴄʀᴇᴅɪᴛ ʀᴇꜰᴜɴᴅᴇᴅ.")
         return
 
     lines = [f"{icon} {title.upper()} 𝗟𝗢𝗢𝗞𝗨𝗣", "━━━━━━━━━━━━━━━━━━"]
@@ -734,7 +901,6 @@ async def process_generic_lookup(update, context, api_url, query_text, title, ic
             clean_key = str(key).replace("_", " ").title()
             lines.append(f"├ {clean_key} • {value}")
         lines.append("──────────────")
-
     lines.append(f"├ 🛠️ ᴅᴇᴠᴇʟᴏᴘᴇʀ: {DEVELOPER} • 🛰️")
     text = "\n".join(lines)
     if len(text) > 4000:
@@ -743,7 +909,7 @@ async def process_generic_lookup(update, context, api_url, query_text, title, ic
 
 
 # ============================================================
-# PAGINATION CALLBACK
+# PAGINATION
 # ============================================================
 
 async def pagination_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -786,31 +952,8 @@ async def pagination_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 # ============================================================
-# ADMIN KEYBOARD
+# BOT MANAGEMENT
 # ============================================================
-
-def admin_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📊 ꜱᴛᴀᴛꜱ", callback_data="admin:stats", style="primary"),
-            InlineKeyboardButton("🔎 Qᴜᴇʀʏꜱᴄᴏᴘᴇ", callback_data="admin:queries", style="primary"),
-        ],
-        [InlineKeyboardButton("📤 ʙᴏᴛ ᴍᴇꜱꜱᴇɴɢᴇʀ", callback_data="admin:messenger", style="success")],
-        [InlineKeyboardButton("🗑️ ᴄʟᴇᴀʀ Qᴜᴇʀʏꜱᴄᴏᴘᴇ", callback_data="admin:clear_queries", style="danger")],
-    ])
-
-
-def messenger_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📝 ᴛᴇxᴛ ᴍᴇꜱꜱᴀɢᴇ", callback_data="messenger:text", style="primary")],
-        [
-            InlineKeyboardButton("🖼️ ᴘʜᴏᴛᴏ", callback_data="messenger:photo", style="primary"),
-            InlineKeyboardButton("🎬 ᴠɪᴅᴇᴏ", callback_data="messenger:video", style="primary"),
-        ],
-        [InlineKeyboardButton("📄 ᴅᴏᴄᴜᴍᴇɴᴛ", callback_data="messenger:document", style="primary")],
-        [InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="danger")],
-    ])
-
 
 async def bot_management(update: Update):
     user = update.effective_user
@@ -821,7 +964,7 @@ async def bot_management(update: Update):
 
 
 # ============================================================
-# ADMIN STATS (paginated)
+# ADMIN STATS
 # ============================================================
 
 async def admin_stats(query, page=0):
@@ -830,26 +973,19 @@ async def admin_stats(query, page=0):
         return
 
     users = get_users()
-    verified = get_verified()
-    verified_list = list(verified.values())
+    user_list = list(users.values())
+    total_users = len(user_list)
 
-    # If verified is empty, fall back to users
-    if not verified_list:
-        verified_list = list(users.values())
-
-    total_verified = len(verified_list)
-    total_pages = max(1, math.ceil(total_verified / STATS_PER_PAGE))
+    total_pages = max(1, math.ceil(total_users / STATS_PER_PAGE))
     page = max(0, min(page, total_pages - 1))
-
     start = page * STATS_PER_PAGE
     end = start + STATS_PER_PAGE
-    page_users = verified_list[start:end]
+    page_users = user_list[start:end]
 
     lines = [
         "📊 𝗕𝗢𝗧 𝗦𝗧𝗔𝗧𝗦",
         "━━━━━━━━━━━━━━━━━━",
-        f"👥 ᴛᴏᴛᴀʟ ᴜꜱᴇʀꜱ • {len(users)}",
-        f"✅ ᴠᴇʀɪꜰɪᴇᴅ ᴜꜱᴇʀꜱ • {total_verified}",
+        f"👥 ᴛᴏᴛᴀʟ ᴜꜱᴇʀꜱ • {total_users}",
         f"📄 ᴘᴀɢᴇ • {page + 1}/{total_pages}",
         "━━━━━━━━━━━━━━━━━━",
         "",
@@ -858,11 +994,17 @@ async def admin_stats(query, page=0):
     for i, record in enumerate(page_users, start=start + 1):
         username = record.get("username")
         username_text = f"@{username}" if username else "N/A"
+        credits = record.get("credits", 0)
+        subs = get_subscriptions()
+        sub_status = "✅" if str(record.get("user_id")) in subs else "❌"
+
         lines.extend([
             f"#{i}",
             f'👤 𝗡𝗮𝗺𝗲 • "{record.get("name") or "N/A"}"',
             f'🆔 𝗨𝘀𝗲𝗿 𝗜𝗗 • "{record.get("user_id")}"',
             f'🏷️ 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲 • "{username_text}"',
+            f'💰 ᴄʀᴇᴅɪᴛꜱ • {credits}',
+            f'💎 ꜱᴜʙ • {sub_status}',
             "━━━━━━━━━━━━━━━━━━",
         ])
 
@@ -876,12 +1018,11 @@ async def admin_stats(query, page=0):
         row1.append(InlineKeyboardButton("ɴᴇxᴛ ➡️", callback_data=f"admin:stats:{page + 1}", style="primary"))
 
     buttons = [row1, [InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="danger")]]
-
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 
 # ============================================================
-# ADMIN QUERY SCOPE (no masking)
+# ADMIN QUERY SCOPE
 # ============================================================
 
 async def admin_queries(query):
@@ -890,7 +1031,6 @@ async def admin_queries(query):
         return
 
     queries = get_queries()
-
     if not queries:
         await query.edit_message_text(
             "🔎 𝗤𝘂𝗲𝗿𝘆𝗦𝗰𝗼𝗽𝗲\n\nɴᴏ Qᴜᴇʀɪᴇꜱ ʀᴇᴄᴏʀᴅᴇᴅ.",
@@ -899,29 +1039,20 @@ async def admin_queries(query):
         return
 
     recent = list(reversed(queries))[:20]
-
     lines = ["🔎 𝗤𝗨𝗘𝗥𝗬𝗦𝗖𝗢𝗣𝗘", "━━━━━━━━━━━━━━━━━━"]
     for index, item in enumerate(recent, start=1):
-        number = str(item.get("number", "N/A"))
-        qtype = item.get("type", "number").upper()
-        name = item.get("name") or "N/A"
-        user_id = item.get("user_id", "N/A")
-
         lines.extend([
             f"#{index}",
-            f"👤 {name}",
-            f"🆔 `{user_id}`",
-            f"📞 {qtype} • `{number}`",
+            f"👤 {item.get('name') or 'N/A'}",
+            f"🆔 `{item.get('user_id', 'N/A')}`",
+            f"📞 {item.get('type', 'number').upper()} • `{item.get('number', 'N/A')}`",
             "──────────────",
         ])
-
     text = "\n".join(lines)
     if len(text) > 4000:
         text = text[:4000] + "\n\n...ᴛʀᴜɴᴄᴀᴛᴇᴅ."
-
     await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
+        text, parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="primary")]]),
     )
 
@@ -969,6 +1100,20 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await admin_queries(query)
     elif data == "admin:clear_queries":
         await clear_queries(query)
+    elif data == "admin:give_credit":
+        context.user_data["admin_action"] = "give_credit"
+        await query.edit_message_text(
+            "💰 ɢɪᴠᴇ ᴄʀᴇᴅɪᴛ\n\nꜱᴇɴᴅ ɪɴ ꜰᴏʀᴍᴀᴛ:\n`USER_ID CREDITS`\n\nᴇxᴀᴍᴘʟᴇ: `8979291976 10`",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="danger")]]),
+        )
+    elif data == "admin:give_sub":
+        context.user_data["admin_action"] = "give_sub"
+        await query.edit_message_text(
+            "💎 ɢɪᴠᴇ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ\n\nꜱᴇɴᴅ ɪɴ ꜰᴏʀᴍᴀᴛ:\n`USER_ID DAYS`\n\nᴇxᴀᴍᴘʟᴇ: `8979291976 30`",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="admin:back", style="danger")]]),
+        )
     elif data == "admin:messenger":
         await query.edit_message_text(
             "📤 𝗕𝗼𝘁 𝗠𝗲𝘀𝘀𝗲𝗻𝗴𝗲𝗿\n\nᴡʜᴀᴛ ᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ꜱᴇɴᴅ?\n\n"
@@ -996,28 +1141,16 @@ async def messenger_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if query.data == "messenger:text":
         context.user_data["messenger_mode"] = "text"
-        await query.edit_message_text(
-            "📝 ꜱᴇɴᴅ ᴛʜᴇ ᴛᴇxᴛ ᴍᴇꜱꜱᴀɢᴇ\n\nᴛʏᴘᴇ ʏᴏᴜʀ ᴍᴇꜱꜱᴀɢᴇ ɴᴏᴡ:",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]),
-        )
+        await query.edit_message_text("📝 ꜱᴇɴᴅ ᴛʜᴇ ᴛᴇxᴛ ᴍᴇꜱꜱᴀɢᴇ:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]))
     elif query.data == "messenger:photo":
         context.user_data["messenger_mode"] = "photo"
-        await query.edit_message_text(
-            "🖼️ ꜱᴇɴᴅ ᴛʜᴇ ᴘʜᴏᴛᴏ\n\nʏᴏᴜ ᴄᴀɴ ᴀᴅᴅ ᴀ ᴄᴀᴘᴛɪᴏɴ ᴛᴏᴏ (ᴏᴘᴛɪᴏɴᴀʟ).",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]),
-        )
+        await query.edit_message_text("🖼️ ꜱᴇɴᴅ ᴛʜᴇ ᴘʜᴏᴛᴏ (ᴏᴘᴛɪᴏɴᴀʟ ᴄᴀᴘᴛɪᴏɴ):", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]))
     elif query.data == "messenger:video":
         context.user_data["messenger_mode"] = "video"
-        await query.edit_message_text(
-            "🎬 ꜱᴇɴᴅ ᴛʜᴇ ᴠɪᴅᴇᴏ\n\nʏᴏᴜ ᴄᴀɴ ᴀᴅᴅ ᴀ ᴄᴀᴘᴛɪᴏɴ ᴛᴏᴏ (ᴏᴘᴛɪᴏɴᴀʟ).",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]),
-        )
+        await query.edit_message_text("🎬 ꜱᴇɴᴅ ᴛʜᴇ ᴠɪᴅᴇᴏ (ᴏᴘᴛɪᴏɴᴀʟ ᴄᴀᴘᴛɪᴏɴ):", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]))
     elif query.data == "messenger:document":
         context.user_data["messenger_mode"] = "document"
-        await query.edit_message_text(
-            "📄 ꜱᴇɴᴅ ᴛʜᴇ ᴅᴏᴄᴜᴍᴇɴᴛ\n\nʏᴏᴜ ᴄᴀɴ ᴀᴅᴅ ᴀ ᴄᴀᴘᴛɪᴏɴ ᴛᴏᴏ (ᴏᴘᴛɪᴏɴᴀʟ).",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]),
-        )
+        await query.edit_message_text("📄 ꜱᴇɴᴅ ᴛʜᴇ ᴅᴏᴄᴜᴍᴇɴᴛ (ᴏᴘᴛɪᴏɴᴀʟ ᴄᴀᴘᴛɪᴏɴ):", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]))
 
 
 # ============================================================
@@ -1045,10 +1178,6 @@ async def broadcast_to_users(context, message_type, content, caption=""):
             failed += 1
     return sent, failed
 
-
-# ============================================================
-# MEDIA HANDLER
-# ============================================================
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -1113,96 +1242,164 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = message.text.strip() if message.text else ""
 
-    # Back button
+    # Back
     if text in ["🔙 ʙᴀᴄᴋ", "⬅️ ʙᴀᴄᴋ", "Back", "back", "/back"]:
         context.user_data.pop("waiting_type", None)
         context.user_data.pop("messenger_mode", None)
-        await message.reply_text(
-            "🔙 ᴋᴇʏʙᴏᴀʀᴅ ʜɪᴅᴅᴇɴ.\n\nꜱᴇɴᴅ /start ᴛᴏ ꜱʜᴏᴡ ᴛʜᴇ ᴍᴇɴᴜ ᴀɢᴀɪɴ.",
-            reply_markup=ReplyKeyboardRemove(),
-        )
+        context.user_data.pop("admin_action", None)
+        await message.reply_text("🔙 ᴋᴇʏʙᴏᴀʀᴅ ʜɪᴅᴅᴇɴ.", reply_markup=ReplyKeyboardRemove())
         return
 
-    # Messenger Text Mode
+    # Admin actions in progress (broadcast text, give_credit, give_sub)
     if user.id == ADMIN_ID and context.user_data.get("messenger_mode") == "text":
         context.user_data.pop("messenger_mode", None)
         sent, failed = await broadcast_to_users(context, "text", text)
         await message.reply_text(f"✅ ᴍᴇꜱꜱᴀɢᴇ ꜱᴇɴᴛ\n\n📤 ꜱᴇɴᴛ: {sent}\n❌ ꜰᴀɪʟᴇᴅ: {failed}")
         return
 
+    # Admin action: give_credit
+    if user.id == ADMIN_ID and context.user_data.get("admin_action") == "give_credit":
+        context.user_data.pop("admin_action", None)
+        parts = text.split()
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            target_id = int(parts[0])
+            amount = int(parts[1])
+            users = get_users()
+            if str(target_id) in users:
+                users[str(target_id)]["credits"] = users[str(target_id)].get("credits", 0) + amount
+                save_users(users)
+                await message.reply_text(f"✅ ᴀᴅᴅᴇᴅ {amount} ᴄʀᴇᴅɪᴛꜱ ᴛᴏ `{target_id}`.", parse_mode="Markdown")
+                # Notify user
+                try:
+                    await context.bot.send_message(
+                        chat_id=target_id,
+                        text=f"💰 ʏᴏᴜ ʀᴇᴄᴇɪᴠᴇᴅ {amount} ᴄʀᴇᴅɪᴛꜱ ꜰʀᴏᴍ ᴀᴅᴍɪɴ!\n\nʏᴏᴜ ᴄᴀɴ ɴᴏᴡ ᴜꜱᴇ ᴛʜᴇ ᴍᴇɴᴜ.",
+                        reply_markup=main_keyboard(target_id),
+                    )
+                except Exception as e:
+                    print("Notify error:", repr(e))
+            else:
+                await message.reply_text("❌ ᴜꜱᴇʀ ɴᴏᴛ ꜰᴏᴜɴᴅ.")
+        else:
+            await message.reply_text("❌ ɪɴᴠᴀʟɪᴅ ꜰᴏʀᴍᴀᴛ. ᴜꜱᴇ: `USER_ID CREDITS`", parse_mode="Markdown")
+        return
+
+    # Admin action: give_sub
+    if user.id == ADMIN_ID and context.user_data.get("admin_action") == "give_sub":
+        context.user_data.pop("admin_action", None)
+        parts = text.split()
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            target_id = int(parts[0])
+            days = int(parts[1])
+            subs = get_subscriptions()
+            expires = datetime.now(timezone.utc) + timedelta(days=days)
+            subs[str(target_id)] = {
+                "user_id": target_id,
+                "expires_at": expires.isoformat(),
+                "activated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            save_subscriptions(subs)
+            await message.reply_text(f"✅ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ ᴀᴄᴛɪᴠᴀᴛᴇᴅ ꜰᴏʀ `{target_id}` ꜰᴏʀ {days} ᴅᴀʏꜱ.", parse_mode="Markdown")
+            try:
+                await context.bot.send_message(
+                    chat_id=target_id,
+                    text=f"💎 ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ ᴀᴄᴛɪᴠᴀᴛᴇᴅ!\n\nᴠᴀʟɪᴅ ꜰᴏʀ {days} ᴅᴀʏꜱ.\nᴇɴᴊᴏʏ ᴜɴʟɪᴍɪᴛᴇᴅ ʟᴏᴏᴋᴜᴘꜱ!",
+                    reply_markup=main_keyboard(target_id),
+                )
+            except Exception as e:
+                print("Notify error:", repr(e))
+        else:
+            await message.reply_text("❌ ɪɴᴠᴀʟɪᴅ ꜰᴏʀᴍᴀᴛ. ᴜꜱᴇ: `USER_ID DAYS`", parse_mode="Markdown")
+        return
+
+    # Channel check
     member = await is_member_of_all_channels(user.id, context)
     if not member:
         await message.reply_text("🔐 ᴘʟᴇᴀꜱᴇ ᴊᴏɪɴ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ ᴛᴏ ᴜꜱᴇ ᴛʜɪꜱ ʙᴏᴛ.", reply_markup=channel_join_keyboard())
         return
 
-    # Lookup buttons
-    if text == "📱 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ":
-        context.user_data["waiting_type"] = "number"
-        await message.reply_text("📞 ꜱᴇɴᴅ 10-ᴅɪɢɪᴛ ɴᴜᴍʙᴇʀ:")
-        return
-    if text == "🔢 ᴛɢ ᴛᴏ ɴᴜᴍ":
-        context.user_data["waiting_type"] = "tg_to_num"
-        await message.reply_text("🔢 ꜱᴇɴᴅ ᴛᴇʟᴇɢʀᴀᴍ ᴜꜱᴇʀ ɪᴅ:")
-        return
-    if text == "🪪 ᴀᴀᴅʜᴀʀ":
-        if not API_AADHAR:
-            await message.reply_text(f"⚠️ ᴀᴀᴅʜᴀʀ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
-            return
-        context.user_data["waiting_type"] = "aadhar"
-        await message.reply_text("🪪 ꜱᴇɴᴅ 12-ᴅɪɢɪᴛ ᴀᴀᴅʜᴀʀ ɴᴜᴍʙᴇʀ:")
-        return
-    if text == "💳 ᴘᴀɴ":
-        if not API_PAN:
-            await message.reply_text(f"⚠️ ᴘᴀɴ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
-            return
-        context.user_data["waiting_type"] = "pan"
-        await message.reply_text("💳 ꜱᴇɴᴅ ᴘᴀɴ ɴᴜᴍʙᴇʀ:")
-        return
-    if text == "🏦 ɪꜰꜱᴄ":
-        if not API_IFSC:
-            await message.reply_text(f"⚠️ ɪꜰꜱᴄ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
-            return
-        context.user_data["waiting_type"] = "ifsc"
-        await message.reply_text("🏦 ꜱᴇɴᴅ ɪꜰꜱᴄ ᴄᴏᴅᴇ:")
-        return
-    if text == "📍 ᴘɪɴ ᴄᴏᴅᴇ":
-        if not API_PINCODE:
-            await message.reply_text(f"⚠️ ᴘɪɴ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
-            return
-        context.user_data["waiting_type"] = "pincode"
-        await message.reply_text("📍 ꜱᴇɴᴅ ᴘɪɴ ᴄᴏᴅᴇ:")
-        return
-    if text == "🌐 ɪᴘ":
-        if not API_IP:
-            await message.reply_text(f"⚠️ ɪᴘ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
-            return
-        context.user_data["waiting_type"] = "ip"
-        await message.reply_text("🌐 ꜱᴇɴᴅ ɪᴘ ᴀᴅᴅʀᴇꜱꜱ:")
-        return
-    if text == "📧 ᴇᴍᴀɪʟ":
-        if not API_EMAIL:
-            await message.reply_text(f"⚠️ ᴇᴍᴀɪʟ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
-            return
-        context.user_data["waiting_type"] = "email"
-        await message.reply_text("📧 ꜱᴇɴᴅ ᴇᴍᴀɪʟ ᴀᴅᴅʀᴇꜱꜱ:")
-        return
-    if text == "☁️ ᴡᴇᴀᴛʜᴇʀ":
-        if not API_WEATHER:
-            await message.reply_text(f"⚠️ ᴡᴇᴀᴛʜᴇʀ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
-            return
-        context.user_data["waiting_type"] = "weather"
-        await message.reply_text("☁️ ꜱᴇɴᴅ ᴄɪᴛʏ ɴᴀᴍᴇ:")
-        return
-
-    # Other buttons
-    if text == "👤 ᴍʏ ᴄᴏɴᴛᴀᴄᴛ":
-        await show_my_contact(update)
-        return
+    # Help button (no access needed)
     if text == "❓ ʜᴇʟᴘ":
         await show_help(update)
         return
+
+    if text == "💳 ʙᴜʏ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ":
+        await show_buy_subscription(update)
+        return
+
+    if text == "👤 ᴍʏ ᴀᴄᴄᴏᴜɴᴛ":
+        await show_my_account(update)
+        return
+
+    if text == "🔗 ʀᴇꜰᴇʀʀᴀʟ":
+        await show_referral(update, context)
+        return
+
     if text == "⚙️ ʙᴏᴛ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ":
         await bot_management(update)
+        return
+
+    # Lookup buttons — check access first
+    lookup_buttons = [
+        "📱 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ", "🔢 ᴛɢ ᴛᴏ ɴᴜᴍ",
+        "🪪 ᴀᴀᴅʜᴀʀ", "💳 ᴘᴀɴ",
+        "🏦 ɪꜰꜱᴄ", "📍 ᴘɪɴ ᴄᴏᴅᴇ",
+        "🌐 ɪᴘ", "📧 ᴇᴍᴀɪʟ", "☁️ ᴡᴇᴀᴛʜᴇʀ"
+    ]
+
+    if text in lookup_buttons:
+        if not has_access(user.id):
+            await message.reply_text(SUBSCRIPTION_MSG, reply_markup=buy_subscription_keyboard())
+            return
+
+        if text == "📱 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ":
+            context.user_data["waiting_type"] = "number"
+            await message.reply_text("📞 ꜱᴇɴᴅ 10-ᴅɪɢɪᴛ ɴᴜᴍʙᴇʀ:")
+        elif text == "🔢 ᴛɢ ᴛᴏ ɴᴜᴍ":
+            context.user_data["waiting_type"] = "tg_to_num"
+            await message.reply_text("🔢 ꜱᴇɴᴅ ᴛᴇʟᴇɢʀᴀᴍ ᴜꜱᴇʀ ɪᴅ:")
+        elif text == "🪪 ᴀᴀᴅʜᴀʀ":
+            if not API_AADHAR:
+                await message.reply_text(f"⚠️ ᴀᴀᴅʜᴀʀ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
+                return
+            context.user_data["waiting_type"] = "aadhar"
+            await message.reply_text("🪪 ꜱᴇɴᴅ 12-ᴅɪɢɪᴛ ᴀᴀᴅʜᴀʀ ɴᴜᴍʙᴇʀ:")
+        elif text == "💳 ᴘᴀɴ":
+            if not API_PAN:
+                await message.reply_text(f"⚠️ ᴘᴀɴ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
+                return
+            context.user_data["waiting_type"] = "pan"
+            await message.reply_text("💳 ꜱᴇɴᴅ ᴘᴀɴ ɴᴜᴍʙᴇʀ:")
+        elif text == "🏦 ɪꜰꜱᴄ":
+            if not API_IFSC:
+                await message.reply_text(f"⚠️ ɪꜰꜱᴄ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
+                return
+            context.user_data["waiting_type"] = "ifsc"
+            await message.reply_text("🏦 ꜱᴇɴᴅ ɪꜰꜱᴄ ᴄᴏᴅᴇ:")
+        elif text == "📍 ᴘɪɴ ᴄᴏᴅᴇ":
+            if not API_PINCODE:
+                await message.reply_text(f"⚠️ ᴘɪɴ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
+                return
+            context.user_data["waiting_type"] = "pincode"
+            await message.reply_text("📍 ꜱᴇɴᴅ ᴘɪɴ ᴄᴏᴅᴇ:")
+        elif text == "🌐 ɪᴘ":
+            if not API_IP:
+                await message.reply_text(f"⚠️ ɪᴘ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
+                return
+            context.user_data["waiting_type"] = "ip"
+            await message.reply_text("🌐 ꜱᴇɴᴅ ɪᴘ ᴀᴅᴅʀᴇꜱꜱ:")
+        elif text == "📧 ᴇᴍᴀɪʟ":
+            if not API_EMAIL:
+                await message.reply_text(f"⚠️ ᴇᴍᴀɪʟ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
+                return
+            context.user_data["waiting_type"] = "email"
+            await message.reply_text("📧 ꜱᴇɴᴅ ᴇᴍᴀɪʟ ᴀᴅᴅʀᴇꜱꜱ:")
+        elif text == "☁️ ᴡᴇᴀᴛʜᴇʀ":
+            if not API_WEATHER:
+                await message.reply_text(f"⚠️ ᴡᴇᴀᴛʜᴇʀ ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
+                return
+            context.user_data["waiting_type"] = "weather"
+            await message.reply_text("☁️ ꜱᴇɴᴅ ᴄɪᴛʏ ɴᴀᴍᴇ:")
         return
 
     # Waiting for input
