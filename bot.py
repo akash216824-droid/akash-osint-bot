@@ -302,7 +302,6 @@ def has_subscription(user_id):
 
 
 def has_access(user_id):
-    # Admin has unlimited free access
     if user_id == ADMIN_ID:
         return True
     if has_subscription(user_id):
@@ -334,7 +333,6 @@ def refund_credit(user_id):
 # ============================================================
 
 def main_keyboard(user_id):
-    # Admin: no referral, no buy subscription
     if user_id == ADMIN_ID:
         rows = [
             [
@@ -361,7 +359,6 @@ def main_keyboard(user_id):
         ]
         return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
 
-    # Normal user
     rows = [
         [
             KeyboardButton("📱 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ", style="primary"),
@@ -382,7 +379,7 @@ def main_keyboard(user_id):
             KeyboardButton("👤 ᴍʏ ᴀᴄᴄᴏᴜɴᴛ", style="primary"),
         ],
         [
-            KeyboardButton("🔗 ʀᴇꜰᴇʀʀᴀʟ", style="primary"),
+            KeyboardButton("🔗 ᴇᴀʀɴ ꜰʀᴇᴇ ᴄʀᴇᴅɪᴛ", style="primary"),
             KeyboardButton("💳 ʙᴜʏ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ", style="success"),
         ],
         [
@@ -400,24 +397,17 @@ def channel_join_keyboard():
     return InlineKeyboardMarkup(rows)
 
 
-def buy_subscription_keyboard(user_id=None):
-    buttons = []
-    if user_id:
-        buttons.append([
+def buy_subscription_keyboard():
+    """Only Buy Subscription button linking to admin."""
+    return InlineKeyboardMarkup([
+        [
             InlineKeyboardButton(
-                "🔗 ᴇᴀʀɴ ꜰʀᴇᴇ ᴄʀᴇᴅɪᴛꜱ (ʀᴇꜰᴇʀʀᴀʟ)",
-                callback_data=f"show_ref:{user_id}",
-                style="primary",
+                "💳 ʙᴜʏ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ",
+                url=f"https://t.me/{ADMIN_USERNAME.lstrip('@')}",
+                style="success",
             )
-        ])
-    buttons.append([
-        InlineKeyboardButton(
-            "💳 ʙᴜʏ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ",
-            url=f"https://t.me/{ADMIN_USERNAME.lstrip('@')}",
-            style="success",
-        )
+        ]
     ])
-    return InlineKeyboardMarkup(buttons)
 
 
 def pagination_keyboard(number, page, total):
@@ -499,7 +489,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if user.id == ADMIN_ID:
-        credits_line = "💰 ᴄʀᴇᴅɪᴛꜱ: ♾️ ᴜɴʟɪᴍɪᴛᴇᴅ (ᴀᴅᴍɪɴ)"
+        credits_line = "💰 ᴄʀᴇᴅɪᴛꜱ: ♾️ ᴜɴʟɪᴍɪᴛᴇᴅ"
         sub_line = "💎 ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ: ♾️ ꜰʀᴇᴇ"
     else:
         credits_line = f"💰 ᴄʀᴇᴅɪᴛꜱ: {user_data.get('credits', 0)}"
@@ -523,10 +513,7 @@ async def close_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("waiting_type", None)
     context.user_data.pop("messenger_mode", None)
     context.user_data.pop("admin_action", None)
-    await update.message.reply_text(
-        "🔙 ᴋᴇʏʙᴏᴀʀᴅ ʜɪᴅᴅᴇɴ.",
-        reply_markup=ReplyKeyboardRemove(),
-    )
+    await update.message.reply_text("🔙 ᴋᴇʏʙᴏᴀʀᴅ ʜɪᴅᴅᴇɴ.", reply_markup=ReplyKeyboardRemove())
 
 
 # ============================================================
@@ -547,45 +534,6 @@ async def check_joined_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     await query.edit_message_text("✅ ᴀʟʟ ᴠᴇʀɪꜰɪᴇᴅ! ᴜꜱᴇ /start ᴛᴏ ᴀᴄᴄᴇꜱꜱ ᴛʜᴇ ʙᴏᴛ.")
-
-
-# ============================================================
-# REFERRAL CALLBACK
-# ============================================================
-
-async def show_referral_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    data = query.data
-    try:
-        user_id = int(data.split(":")[1])
-    except (IndexError, ValueError):
-        return
-
-    bot_info = await context.bot.get_me()
-    ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
-
-    user_data = get_user(user_id) or {}
-    credits = user_data.get("credits", 0)
-    referrals = user_data.get("referrals", 0)
-
-    text = (
-        "🔗 𝗬𝗼𝘂𝗿 𝗥𝗲𝗳𝗲𝗿𝗿𝗮𝗹 𝗟𝗶𝗻𝗸\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        f"{ref_link}\n\n"
-        f"💰 ᴇᴀʀɴ {REFERRAL_BONUS} ᴄʀᴇᴅɪᴛ ᴘᴇʀ ʀᴇꜰᴇʀʀᴀʟ\n\n"
-        f"📊 ʏᴏᴜʀ ꜱᴛᴀᴛꜱ:\n"
-        f"💰 ᴄʀᴇᴅɪᴛꜱ • {credits}\n"
-        f"👥 ʀᴇꜰᴇʀʀᴀʟꜱ • {referrals}"
-    )
-
-    await query.edit_message_text(
-        text,
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("💳 ʙᴜʏ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ", url=f"https://t.me/{ADMIN_USERNAME.lstrip('@')}", style="success")],
-        ]),
-    )
 
 
 # ============================================================
@@ -651,7 +599,7 @@ async def show_my_account(update: Update):
 
 
 # ============================================================
-# REFERRAL (text button)
+# REFERRAL (only link + message — no stats, no buy button)
 # ============================================================
 
 async def show_referral(update: Update, context):
@@ -659,32 +607,26 @@ async def show_referral(update: Update, context):
     bot_username = context.bot.username
     link = f"https://t.me/{bot_username}?start={user.id}"
 
-    user_data = get_user(user.id) or {}
-
     await update.message.reply_text(
         "🔗 𝗬𝗼𝘂𝗿 𝗥𝗲𝗳𝗲𝗿𝗿𝗮𝗹 𝗟𝗶𝗻𝗸\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
         f"{link}\n\n"
-        f"💰 ᴇᴀʀɴ {REFERRAL_BONUS} ᴄʀᴇᴅɪᴛ ᴘᴇʀ ʀᴇꜰᴇʀʀᴀʟ\n\n"
-        f"📊 ʏᴏᴜʀ ꜱᴛᴀᴛꜱ:\n"
-        f"💰 ᴄʀᴇᴅɪᴛꜱ • {user_data.get('credits', 0)}\n"
-        f"👥 ʀᴇꜰᴇʀʀᴀʟꜱ • {user_data.get('referrals', 0)}"
+        f"💰 ᴇᴀʀɴ {REFERRAL_BONUS} ᴄʀᴇᴅɪᴛ ᴘᴇʀ ʀᴇꜰᴇʀʀᴀʟ"
     )
 
 
 # ============================================================
-# BUY SUBSCRIPTION
+# BUY SUBSCRIPTION (direct admin link only)
 # ============================================================
 
 async def show_buy_subscription(update: Update):
-    user = update.effective_user
     await update.message.reply_text(
         "𝑺𝒖𝒃𝒔𝒄𝒓𝒊𝒑𝒕𝒊𝒐𝒏 𝑹𝒆𝒒𝒖𝒊𝒓𝒆𝒅?\n\n"
         "𝑻𝒐 𝒑𝒖𝒓𝒄𝒉𝒂𝒔𝒆 𝒂 𝒑𝒍𝒂𝒏, 𝒂𝒄𝒕𝒊𝒗𝒂𝒕𝒆 𝒚𝒐𝒖𝒓 "
         "𝒔𝒖𝒃𝒔𝒄𝒓𝒊𝒑𝒕𝒊𝒐𝒏 𝒐𝒓 𝒈𝒆𝒕 𝒑𝒍𝒂𝒏-𝒓𝒆𝒍𝒂𝒕𝒆𝒅 "
         "𝒂𝒔𝒔𝒊𝒔𝒕𝒂𝒏𝒄𝒆, 𝒑𝒍𝒆𝒂𝒔𝒆 𝒄𝒐𝒏𝒕𝒂𝒄𝒕 𝒕𝒉𝒆 𝒂𝒅𝒎𝒊𝒏.\n\n"
         f"👨🏻‍💻 𝑨𝒅𝒎𝒊𝒏 ~ {ADMIN_USERNAME}",
-        reply_markup=buy_subscription_keyboard(user.id),
+        reply_markup=buy_subscription_keyboard(),
     )
 
 
@@ -1186,8 +1128,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "admin:messenger":
         await query.edit_message_text(
             "📤 𝗕𝗼𝘁 𝗠𝗲𝘀𝘀𝗲𝗻𝗴𝗲𝗿\n\nᴡʜᴀᴛ ᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ꜱᴇɴᴅ?\n\n"
-            "📝 ᴛᴇxᴛ ᴍᴇꜱꜱᴀɢᴇ\n🖼️ ᴘʜᴏᴛᴏ (ᴡɪᴛʜ ᴏʀ ᴡɪᴛʜᴏᴜᴛ ᴄᴀᴘᴛɪᴏɴ)\n"
-            "🎬 ᴠɪᴅᴇᴏ (ᴡɪᴛʜ ᴏʀ ᴡɪᴛʜᴏᴜᴛ ᴄᴀᴘᴛɪᴏɴ)\n📄 ᴅᴏᴄᴜᴍᴇɴᴛ (ᴡɪᴛʜ ᴏʀ ᴡɪᴛʜᴏᴜᴛ ᴄᴀᴘᴛɪᴏɴ)",
+            "📝 ᴛᴇxᴛ ᴍᴇꜱꜱᴀɢᴇ\n🖼️ ᴘʜᴏᴛᴏ\n🎬 ᴠɪᴅᴇᴏ\n📄 ᴅᴏᴄᴜᴍᴇɴᴛ",
             reply_markup=messenger_keyboard(),
         )
     elif data == "admin:back":
@@ -1393,7 +1334,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "👤 ᴍʏ ᴀᴄᴄᴏᴜɴᴛ":
         await show_my_account(update)
         return
-    if text == "🔗 ʀᴇꜰᴇʀʀᴀʟ" and user.id != ADMIN_ID:
+    if text == "🔗 ᴇᴀʀɴ ꜰʀᴇᴇ ᴄʀᴇᴅɪᴛ" and user.id != ADMIN_ID:
         await show_referral(update, context)
         return
     if text == "💳 ʙᴜʏ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ" and user.id != ADMIN_ID:
@@ -1403,7 +1344,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await bot_management(update)
         return
 
-    # Lookup buttons — check access (admin auto-passes)
+    # Lookup buttons
     lookup_buttons = [
         "📱 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ", "🔢 ᴛɢ ᴛᴏ ɴᴜᴍ",
         "🪪 ᴀᴀᴅʜᴀʀ", "💳 ᴘᴀɴ",
@@ -1413,7 +1354,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text in lookup_buttons:
         if not has_access(user.id):
-            await message.reply_text(SUBSCRIPTION_MSG, reply_markup=buy_subscription_keyboard(user.id))
+            await message.reply_text(SUBSCRIPTION_MSG, reply_markup=buy_subscription_keyboard())
             return
 
         if text == "📱 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ":
@@ -1533,7 +1474,6 @@ def main():
     app.add_handler(CommandHandler("close", close_command))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL, handle_media))
     app.add_handler(CallbackQueryHandler(check_joined_callback, pattern="^check_joined$"))
-    app.add_handler(CallbackQueryHandler(show_referral_callback, pattern=r"^show_ref:"))
     app.add_handler(CallbackQueryHandler(pagination_callback, pattern=r"^lookup:"))
     app.add_handler(CallbackQueryHandler(messenger_callback, pattern=r"^messenger:"))
     app.add_handler(CallbackQueryHandler(admin_callback, pattern=r"^admin:"))
