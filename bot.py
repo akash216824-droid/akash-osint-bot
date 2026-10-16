@@ -67,7 +67,7 @@ API_WEATHER = ""
 API_KEY = "DEMO"
 
 RECORDS_PER_PAGE = 3
-STATS_PER_PAGE = 15
+STATS_PER_PAGE = 5
 
 USERS_FILE = "users.json"
 QUERIES_FILE = "queries.json"
@@ -257,15 +257,12 @@ def register_user(user, referred_by=None):
         }
         save_users(users)
 
-        # Referral bonus
         if referred_by and str(referred_by) in users and str(referred_by) != uid:
             users[uid]["referred_by"] = int(referred_by)
             users[str(referred_by)]["credits"] = users[str(referred_by)].get("credits", 0) + REFERRAL_BONUS
             users[str(referred_by)]["referrals"] = users[str(referred_by)].get("referrals", 0) + 1
             save_users(users)
-
     else:
-        # Update name/username
         users[uid]["name"] = user.full_name
         users[uid]["username"] = user.username
         save_users(users)
@@ -305,6 +302,7 @@ def has_subscription(user_id):
 
 
 def has_access(user_id):
+    # Admin has unlimited free access
     if user_id == ADMIN_ID:
         return True
     if has_subscription(user_id):
@@ -316,7 +314,6 @@ def has_access(user_id):
 
 
 def deduct_credit(user_id):
-    """Deduct 1 credit only if user has no subscription."""
     if user_id == ADMIN_ID:
         return
     if has_subscription(user_id):
@@ -325,7 +322,6 @@ def deduct_credit(user_id):
 
 
 def refund_credit(user_id):
-    """Refund 1 credit if deducted but data not found."""
     if user_id == ADMIN_ID:
         return
     if has_subscription(user_id):
@@ -338,6 +334,34 @@ def refund_credit(user_id):
 # ============================================================
 
 def main_keyboard(user_id):
+    # Admin: no referral, no buy subscription
+    if user_id == ADMIN_ID:
+        rows = [
+            [
+                KeyboardButton("📱 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ", style="primary"),
+                KeyboardButton("🔢 ᴛɢ ᴛᴏ ɴᴜᴍ", style="primary"),
+            ],
+            [
+                KeyboardButton("🪪 ᴀᴀᴅʜᴀʀ", style="primary"),
+                KeyboardButton("💳 ᴘᴀɴ", style="primary"),
+                KeyboardButton("🏦 ɪꜰꜱᴄ", style="primary"),
+            ],
+            [
+                KeyboardButton("📍 ᴘɪɴ ᴄᴏᴅᴇ", style="primary"),
+                KeyboardButton("🌐 ɪᴘ", style="primary"),
+                KeyboardButton("📧 ᴇᴍᴀɪʟ", style="primary"),
+            ],
+            [
+                KeyboardButton("☁️ ᴡᴇᴀᴛʜᴇʀ", style="primary"),
+                KeyboardButton("👤 ᴍʏ ᴀᴄᴄᴏᴜɴᴛ", style="primary"),
+            ],
+            [
+                KeyboardButton("⚙️ ʙᴏᴛ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ", style="danger"),
+            ],
+        ]
+        return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
+
+    # Normal user
     rows = [
         [
             KeyboardButton("📱 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ", style="primary"),
@@ -346,12 +370,10 @@ def main_keyboard(user_id):
         [
             KeyboardButton("🪪 ᴀᴀᴅʜᴀʀ", style="primary"),
             KeyboardButton("💳 ᴘᴀɴ", style="primary"),
-        ],
-        [
             KeyboardButton("🏦 ɪꜰꜱᴄ", style="primary"),
-            KeyboardButton("📍 ᴘɪɴ ᴄᴏᴅᴇ", style="primary"),
         ],
         [
+            KeyboardButton("📍 ᴘɪɴ ᴄᴏᴅᴇ", style="primary"),
             KeyboardButton("🌐 ɪᴘ", style="primary"),
             KeyboardButton("📧 ᴇᴍᴀɪʟ", style="primary"),
         ],
@@ -363,13 +385,10 @@ def main_keyboard(user_id):
             KeyboardButton("🔗 ʀᴇꜰᴇʀʀᴀʟ", style="primary"),
             KeyboardButton("💳 ʙᴜʏ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ", style="success"),
         ],
+        [
+            KeyboardButton("❓ ʜᴇʟᴘ", style="success"),
+        ],
     ]
-
-    if user_id == ADMIN_ID:
-        rows.append([KeyboardButton("⚙️ ʙᴏᴛ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ", style="danger")])
-    else:
-        rows.append([KeyboardButton("❓ ʜᴇʟᴘ", style="success")])
-
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
 
 
@@ -381,10 +400,24 @@ def channel_join_keyboard():
     return InlineKeyboardMarkup(rows)
 
 
-def buy_subscription_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💳 ʙᴜʏ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ", url=f"https://t.me/{ADMIN_USERNAME.lstrip('@')}", style="success")],
+def buy_subscription_keyboard(user_id=None):
+    buttons = []
+    if user_id:
+        buttons.append([
+            InlineKeyboardButton(
+                "🔗 ᴇᴀʀɴ ꜰʀᴇᴇ ᴄʀᴇᴅɪᴛꜱ (ʀᴇꜰᴇʀʀᴀʟ)",
+                callback_data=f"show_ref:{user_id}",
+                style="primary",
+            )
+        ])
+    buttons.append([
+        InlineKeyboardButton(
+            "💳 ʙᴜʏ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ",
+            url=f"https://t.me/{ADMIN_USERNAME.lstrip('@')}",
+            style="success",
+        )
     ])
+    return InlineKeyboardMarkup(buttons)
 
 
 def pagination_keyboard(number, page, total):
@@ -465,14 +498,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    credits = user_data.get("credits", 0)
-    sub_status = "✅ ᴀᴄᴛɪᴠᴇ" if has_subscription(user.id) else "❌ ɴᴏɴᴇ"
+    if user.id == ADMIN_ID:
+        credits_line = "💰 ᴄʀᴇᴅɪᴛꜱ: ♾️ ᴜɴʟɪᴍɪᴛᴇᴅ (ᴀᴅᴍɪɴ)"
+        sub_line = "💎 ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ: ♾️ ꜰʀᴇᴇ"
+    else:
+        credits_line = f"💰 ᴄʀᴇᴅɪᴛꜱ: {user_data.get('credits', 0)}"
+        sub_line = "💎 ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ: " + ("✅ ᴀᴄᴛɪᴠᴇ" if has_subscription(user.id) else "❌ ɴᴏɴᴇ")
 
     await update.message.reply_text(
         f"👋 ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴀᴋᴀꜱʜ ᴏꜱɪɴᴛ ʙᴏᴛ.\n\n"
         f"👤 ᴜꜱᴇʀ ɪᴅ: {user.id}\n"
-        f"💰 ᴄʀᴇᴅɪᴛꜱ: {credits}\n"
-        f"💎 ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ: {sub_status}\n\n"
+        f"{credits_line}\n"
+        f"{sub_line}\n\n"
         f"ᴄʜᴏᴏꜱᴇ ᴀɴ ᴏᴘᴛɪᴏɴ ꜰʀᴏᴍ ᴛʜᴇ ᴍᴇɴᴜ.",
         reply_markup=main_keyboard(user.id),
     )
@@ -485,6 +522,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def close_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("waiting_type", None)
     context.user_data.pop("messenger_mode", None)
+    context.user_data.pop("admin_action", None)
     await update.message.reply_text(
         "🔙 ᴋᴇʏʙᴏᴀʀᴅ ʜɪᴅᴅᴇɴ.",
         reply_markup=ReplyKeyboardRemove(),
@@ -512,6 +550,45 @@ async def check_joined_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 # ============================================================
+# REFERRAL CALLBACK
+# ============================================================
+
+async def show_referral_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    try:
+        user_id = int(data.split(":")[1])
+    except (IndexError, ValueError):
+        return
+
+    bot_info = await context.bot.get_me()
+    ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
+
+    user_data = get_user(user_id) or {}
+    credits = user_data.get("credits", 0)
+    referrals = user_data.get("referrals", 0)
+
+    text = (
+        "🔗 𝗬𝗼𝘂𝗿 𝗥𝗲𝗳𝗲𝗿𝗿𝗮𝗹 𝗟𝗶𝗻𝗸\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        f"{ref_link}\n\n"
+        f"💰 ᴇᴀʀɴ {REFERRAL_BONUS} ᴄʀᴇᴅɪᴛ ᴘᴇʀ ʀᴇꜰᴇʀʀᴀʟ\n\n"
+        f"📊 ʏᴏᴜʀ ꜱᴛᴀᴛꜱ:\n"
+        f"💰 ᴄʀᴇᴅɪᴛꜱ • {credits}\n"
+        f"👥 ʀᴇꜰᴇʀʀᴀʟꜱ • {referrals}"
+    )
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("💳 ʙᴜʏ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ", url=f"https://t.me/{ADMIN_USERNAME.lstrip('@')}", style="success")],
+        ]),
+    )
+
+
+# ============================================================
 # HELP
 # ============================================================
 
@@ -531,6 +608,19 @@ async def show_help(update: Update):
 async def show_my_account(update: Update):
     user = update.effective_user
     user_data = get_user(user.id) or {}
+
+    if user.id == ADMIN_ID:
+        await update.message.reply_text(
+            "👤 𝗬𝗼𝘂𝗿 𝗔𝗰𝗰𝗼𝘂𝗻𝘁\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            f"👤 𝗡𝗮𝗺𝗲      • {user_data.get('name') or 'N/A'}\n"
+            f"🆔 𝗨𝘀𝗲𝗿 𝗜𝗗   • {user.id}\n"
+            f"🏷️ 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲  • @{user_data.get('username') or 'N/A'}\n"
+            f"💰 ᴄʀᴇᴅɪᴛꜱ    • ♾️ ᴜɴʟɪᴍɪᴛᴇᴅ\n"
+            f"💎 ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ • ♾️ ꜰʀᴇᴇ\n\n"
+            f"├ 🛠️ ᴅᴇᴠᴇʟᴏᴘᴇʀ: {DEVELOPER} • 🛰️"
+        )
+        return
 
     credits = user_data.get("credits", 0)
     referrals = user_data.get("referrals", 0)
@@ -561,7 +651,7 @@ async def show_my_account(update: Update):
 
 
 # ============================================================
-# REFERRAL
+# REFERRAL (text button)
 # ============================================================
 
 async def show_referral(update: Update, context):
@@ -569,11 +659,16 @@ async def show_referral(update: Update, context):
     bot_username = context.bot.username
     link = f"https://t.me/{bot_username}?start={user.id}"
 
+    user_data = get_user(user.id) or {}
+
     await update.message.reply_text(
         "🔗 𝗬𝗼𝘂𝗿 𝗥𝗲𝗳𝗲𝗿𝗿𝗮𝗹 𝗟𝗶𝗻𝗸\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
         f"{link}\n\n"
-        f"💰 ᴇᴀʀɴ {REFERRAL_BONUS} ᴄʀᴇᴅɪᴛ ᴘᴇʀ ʀᴇꜰᴇʀʀᴀʟ!"
+        f"💰 ᴇᴀʀɴ {REFERRAL_BONUS} ᴄʀᴇᴅɪᴛ ᴘᴇʀ ʀᴇꜰᴇʀʀᴀʟ\n\n"
+        f"📊 ʏᴏᴜʀ ꜱᴛᴀᴛꜱ:\n"
+        f"💰 ᴄʀᴇᴅɪᴛꜱ • {user_data.get('credits', 0)}\n"
+        f"👥 ʀᴇꜰᴇʀʀᴀʟꜱ • {user_data.get('referrals', 0)}"
     )
 
 
@@ -582,13 +677,14 @@ async def show_referral(update: Update, context):
 # ============================================================
 
 async def show_buy_subscription(update: Update):
+    user = update.effective_user
     await update.message.reply_text(
         "𝑺𝒖𝒃𝒔𝒄𝒓𝒊𝒑𝒕𝒊𝒐𝒏 𝑹𝒆𝒒𝒖𝒊𝒓𝒆𝒅?\n\n"
         "𝑻𝒐 𝒑𝒖𝒓𝒄𝒉𝒂𝒔𝒆 𝒂 𝒑𝒍𝒂𝒏, 𝒂𝒄𝒕𝒊𝒗𝒂𝒕𝒆 𝒚𝒐𝒖𝒓 "
         "𝒔𝒖𝒃𝒔𝒄𝒓𝒊𝒑𝒕𝒊𝒐𝒏 𝒐𝒓 𝒈𝒆𝒕 𝒑𝒍𝒂𝒏-𝒓𝒆𝒍𝒂𝒕𝒆𝒅 "
         "𝒂𝒔𝒔𝒊𝒔𝒕𝒂𝒏𝒄𝒆, 𝒑𝒍𝒆𝒂𝒔𝒆 𝒄𝒐𝒏𝒕𝒂𝒄𝒕 𝒕𝒉𝒆 𝒂𝒅𝒎𝒊𝒏.\n\n"
         f"👨🏻‍💻 𝑨𝒅𝒎𝒊𝒏 ~ {ADMIN_USERNAME}",
-        reply_markup=buy_subscription_keyboard(),
+        reply_markup=buy_subscription_keyboard(user.id),
     )
 
 
@@ -610,7 +706,7 @@ def clean_number(text):
 
 
 # ============================================================
-# API HELPER
+# API CALL HELPER
 # ============================================================
 
 async def call_api(url, params):
@@ -651,10 +747,6 @@ def extract_records(data):
     return []
 
 
-# ============================================================
-# SAVE QUERY
-# ============================================================
-
 def save_query(user, number, query_type="number"):
     queries = get_queries()
     queries.append({
@@ -675,9 +767,10 @@ def save_query(user, number, query_type="number"):
 
 SUBSCRIPTION_MSG = (
     "𝑺𝒖𝒃𝒔𝒄𝒓𝒊𝒑𝒕𝒊𝒐𝒏 𝑹𝒆𝒒𝒖𝒊𝒓𝒆𝒅?\n\n"
-    "𝑻𝒐 𝒑𝒖𝒓𝒄𝒉𝒂𝒔𝒆 𝒂 𝒑𝒍𝒂𝒏, 𝒂𝒄𝒕𝒊𝒗𝒂𝒕𝒆 𝒚𝒐𝒖𝒓 "
-    "𝒔𝒖𝒃𝒔𝒄𝒓𝒊𝒑𝒕𝒊𝒐𝒏 𝒐𝒓 𝒈𝒆𝒕 𝒑𝒍𝒂𝒏-𝒓𝒆𝒍𝒂𝒕𝒆𝒅 "
-    "𝒂𝒔𝒔𝒊𝒔𝒕𝒂𝒏𝒄𝒆, 𝒑𝒍𝒆𝒂𝒔𝒆 𝒄𝒐𝒏𝒕𝒂𝒄𝒕 𝒕𝒉𝒆 𝒂𝒅𝒎𝒊𝒏.\n\n"
+    "💰 ʏᴏᴜ ᴅᴏɴ'ᴛ ʜᴀᴠᴇ ᴇɴᴏᴜɢʜ ᴄʀᴇᴅɪᴛꜱ.\n\n"
+    "👇 ᴄʜᴏᴏꜱᴇ ᴀɴ ᴏᴘᴛɪᴏɴ ʙᴇʟᴏᴡ:\n\n"
+    "🔗 ɪɴᴠɪᴛᴇ ꜰʀɪᴇɴᴅꜱ ᴛᴏ ᴇᴀʀɴ ꜰʀᴇᴇ ᴄʀᴇᴅɪᴛꜱ\n"
+    "💳 ᴏʀ ʙᴜʏ ᴀ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ ꜰʀᴏᴍ ᴀᴅᴍɪɴ\n\n"
     f"👨🏻‍💻 𝑨𝒅𝒎𝒊𝒏 ~ {ADMIN_USERNAME}"
 )
 
@@ -755,23 +848,6 @@ def build_page(records, number, page):
 
 
 # ============================================================
-# CHECK ACCESS (credit/subscription check)
-# ============================================================
-
-async def require_access(update, context):
-    """Return True if user has access, else send subscription message."""
-    user = update.effective_user
-    if has_access(user.id):
-        return True
-
-    await update.message.reply_text(
-        SUBSCRIPTION_MSG,
-        reply_markup=buy_subscription_keyboard(),
-    )
-    return False
-
-
-# ============================================================
 # NUMBER LOOKUP
 # ============================================================
 
@@ -783,10 +859,7 @@ async def process_number(update, context, number):
         await update.message.reply_text("❌ ᴘʟᴇᴀꜱᴇ ꜱᴇɴᴅ ᴀ ᴠᴀʟɪᴅ 10-ᴅɪɢɪᴛ ᴍᴏʙɪʟᴇ ɴᴜᴍʙᴇʀ.")
         return
 
-    # Deduct credit
-    if user.id != ADMIN_ID and not has_subscription(user.id):
-        deduct_credit(user.id)
-
+    deduct_credit(user.id)
     save_query(user, clean, "number")
     searching = await update.message.reply_text("🔎 ꜱᴇᴀʀᴄʜɪɴɢ...")
 
@@ -832,9 +905,7 @@ async def process_tg_to_num(update, context, tg_id):
         await update.message.reply_text("❌ ᴘʟᴇᴀꜱᴇ ꜱᴇɴᴅ ᴀ ᴠᴀʟɪᴅ ᴛᴇʟᴇɢʀᴀᴍ ᴜꜱᴇʀ ɪᴅ.")
         return
 
-    if user.id != ADMIN_ID and not has_subscription(user.id):
-        deduct_credit(user.id)
-
+    deduct_credit(user.id)
     save_query(user, clean, "tg_to_num")
     searching = await update.message.reply_text("🔎 ꜱᴇᴀʀᴄʜɪɴɢ...")
 
@@ -872,9 +943,7 @@ async def process_generic_lookup(update, context, api_url, query_text, title, ic
         await update.message.reply_text(f"⚠️ {icon} {title} ᴀᴘɪ ɴᴏᴛ ᴄᴏɴꜰɪɢᴜʀᴇᴅ.\n\nᴄᴏɴᴛᴀᴄᴛ {ADMIN_USERNAME}")
         return
 
-    if user.id != ADMIN_ID and not has_subscription(user.id):
-        deduct_credit(user.id)
-
+    deduct_credit(user.id)
     save_query(user, query_text, title.lower())
     searching = await update.message.reply_text(f"🔎 ꜱᴇᴀʀᴄʜɪɴɢ {title}...")
 
@@ -1144,13 +1213,13 @@ async def messenger_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.edit_message_text("📝 ꜱᴇɴᴅ ᴛʜᴇ ᴛᴇxᴛ ᴍᴇꜱꜱᴀɢᴇ:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]))
     elif query.data == "messenger:photo":
         context.user_data["messenger_mode"] = "photo"
-        await query.edit_message_text("🖼️ ꜱᴇɴᴅ ᴛʜᴇ ᴘʜᴏᴛᴏ (ᴏᴘᴛɪᴏɴᴀʟ ᴄᴀᴘᴛɪᴏɴ):", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]))
+        await query.edit_message_text("🖼️ ꜱᴇɴᴅ ᴛʜᴇ ᴘʜᴏᴛᴏ:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]))
     elif query.data == "messenger:video":
         context.user_data["messenger_mode"] = "video"
-        await query.edit_message_text("🎬 ꜱᴇɴᴅ ᴛʜᴇ ᴠɪᴅᴇᴏ (ᴏᴘᴛɪᴏɴᴀʟ ᴄᴀᴘᴛɪᴏɴ):", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]))
+        await query.edit_message_text("🎬 ꜱᴇɴᴅ ᴛʜᴇ ᴠɪᴅᴇᴏ:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]))
     elif query.data == "messenger:document":
         context.user_data["messenger_mode"] = "document"
-        await query.edit_message_text("📄 ꜱᴇɴᴅ ᴛʜᴇ ᴅᴏᴄᴜᴍᴇɴᴛ (ᴏᴘᴛɪᴏɴᴀʟ ᴄᴀᴘᴛɪᴏɴ):", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]))
+        await query.edit_message_text("📄 ꜱᴇɴᴅ ᴛʜᴇ ᴅᴏᴄᴜᴍᴇɴᴛ:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ ᴄᴀɴᴄᴇʟ", callback_data="admin:messenger", style="danger")]]))
 
 
 # ============================================================
@@ -1250,14 +1319,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text("🔙 ᴋᴇʏʙᴏᴀʀᴅ ʜɪᴅᴅᴇɴ.", reply_markup=ReplyKeyboardRemove())
         return
 
-    # Admin actions in progress (broadcast text, give_credit, give_sub)
+    # Messenger Text Mode
     if user.id == ADMIN_ID and context.user_data.get("messenger_mode") == "text":
         context.user_data.pop("messenger_mode", None)
         sent, failed = await broadcast_to_users(context, "text", text)
         await message.reply_text(f"✅ ᴍᴇꜱꜱᴀɢᴇ ꜱᴇɴᴛ\n\n📤 ꜱᴇɴᴛ: {sent}\n❌ ꜰᴀɪʟᴇᴅ: {failed}")
         return
 
-    # Admin action: give_credit
+    # Admin: give_credit
     if user.id == ADMIN_ID and context.user_data.get("admin_action") == "give_credit":
         context.user_data.pop("admin_action", None)
         parts = text.split()
@@ -1269,11 +1338,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 users[str(target_id)]["credits"] = users[str(target_id)].get("credits", 0) + amount
                 save_users(users)
                 await message.reply_text(f"✅ ᴀᴅᴅᴇᴅ {amount} ᴄʀᴇᴅɪᴛꜱ ᴛᴏ `{target_id}`.", parse_mode="Markdown")
-                # Notify user
                 try:
                     await context.bot.send_message(
                         chat_id=target_id,
-                        text=f"💰 ʏᴏᴜ ʀᴇᴄᴇɪᴠᴇᴅ {amount} ᴄʀᴇᴅɪᴛꜱ ꜰʀᴏᴍ ᴀᴅᴍɪɴ!\n\nʏᴏᴜ ᴄᴀɴ ɴᴏᴡ ᴜꜱᴇ ᴛʜᴇ ᴍᴇɴᴜ.",
+                        text=f"💰 ʏᴏᴜ ʀᴇᴄᴇɪᴠᴇᴅ {amount} ᴄʀᴇᴅɪᴛꜱ ꜰʀᴏᴍ ᴀᴅᴍɪɴ!",
                         reply_markup=main_keyboard(target_id),
                     )
                 except Exception as e:
@@ -1284,7 +1352,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text("❌ ɪɴᴠᴀʟɪᴅ ꜰᴏʀᴍᴀᴛ. ᴜꜱᴇ: `USER_ID CREDITS`", parse_mode="Markdown")
         return
 
-    # Admin action: give_sub
+    # Admin: give_sub
     if user.id == ADMIN_ID and context.user_data.get("admin_action") == "give_sub":
         context.user_data.pop("admin_action", None)
         parts = text.split()
@@ -1303,7 +1371,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(
                     chat_id=target_id,
-                    text=f"💎 ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ ᴀᴄᴛɪᴠᴀᴛᴇᴅ!\n\nᴠᴀʟɪᴅ ꜰᴏʀ {days} ᴅᴀʏꜱ.\nᴇɴᴊᴏʏ ᴜɴʟɪᴍɪᴛᴇᴅ ʟᴏᴏᴋᴜᴘꜱ!",
+                    text=f"💎 ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ ᴀᴄᴛɪᴠᴀᴛᴇᴅ!\n\nᴠᴀʟɪᴅ ꜰᴏʀ {days} ᴅᴀʏꜱ.",
                     reply_markup=main_keyboard(target_id),
                 )
             except Exception as e:
@@ -1318,28 +1386,24 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text("🔐 ᴘʟᴇᴀꜱᴇ ᴊᴏɪɴ ᴀʟʟ ᴄʜᴀɴɴᴇʟꜱ ᴛᴏ ᴜꜱᴇ ᴛʜɪꜱ ʙᴏᴛ.", reply_markup=channel_join_keyboard())
         return
 
-    # Help button (no access needed)
+    # Non-access buttons
     if text == "❓ ʜᴇʟᴘ":
         await show_help(update)
         return
-
-    if text == "💳 ʙᴜʏ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ":
-        await show_buy_subscription(update)
-        return
-
     if text == "👤 ᴍʏ ᴀᴄᴄᴏᴜɴᴛ":
         await show_my_account(update)
         return
-
-    if text == "🔗 ʀᴇꜰᴇʀʀᴀʟ":
+    if text == "🔗 ʀᴇꜰᴇʀʀᴀʟ" and user.id != ADMIN_ID:
         await show_referral(update, context)
         return
-
-    if text == "⚙️ ʙᴏᴛ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ":
+    if text == "💳 ʙᴜʏ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ" and user.id != ADMIN_ID:
+        await show_buy_subscription(update)
+        return
+    if text == "⚙️ ʙᴏᴛ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ" and user.id == ADMIN_ID:
         await bot_management(update)
         return
 
-    # Lookup buttons — check access first
+    # Lookup buttons — check access (admin auto-passes)
     lookup_buttons = [
         "📱 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ", "🔢 ᴛɢ ᴛᴏ ɴᴜᴍ",
         "🪪 ᴀᴀᴅʜᴀʀ", "💳 ᴘᴀɴ",
@@ -1349,7 +1413,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text in lookup_buttons:
         if not has_access(user.id):
-            await message.reply_text(SUBSCRIPTION_MSG, reply_markup=buy_subscription_keyboard())
+            await message.reply_text(SUBSCRIPTION_MSG, reply_markup=buy_subscription_keyboard(user.id))
             return
 
         if text == "📱 ɴᴜᴍʙᴇʀ ʟᴏᴏᴋᴜᴘ":
@@ -1469,6 +1533,7 @@ def main():
     app.add_handler(CommandHandler("close", close_command))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL, handle_media))
     app.add_handler(CallbackQueryHandler(check_joined_callback, pattern="^check_joined$"))
+    app.add_handler(CallbackQueryHandler(show_referral_callback, pattern=r"^show_ref:"))
     app.add_handler(CallbackQueryHandler(pagination_callback, pattern=r"^lookup:"))
     app.add_handler(CallbackQueryHandler(messenger_callback, pattern=r"^messenger:"))
     app.add_handler(CallbackQueryHandler(admin_callback, pattern=r"^admin:"))
