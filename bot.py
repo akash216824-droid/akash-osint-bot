@@ -54,8 +54,8 @@ CHANNELS = [
 ]
 
 # ---------- API URLs ----------
-API_NUMBER = "https://akash-number-lookup.vercel.app/api/search"
-API_TG_TO_NUM = "https://akash-telegram-to-number.vercel.app/resolve"
+API_NUMBER = "https://akash-number-lookup.vercel.app/v4/lookup-x9k2"
+API_TG_TO_NUM = "https://akash-telegram-to-number.vercel.app/v2/tg-lookup-m4k9"
 API_AADHAR = ""
 API_PAN = ""
 API_EMAIL = ""
